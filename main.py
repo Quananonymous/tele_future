@@ -662,14 +662,14 @@ class IndicatorBot:
                     self.log(f"Lỗi khi đóng lệnh")
                     
             # Kiểm tra lại trạng thái
-            time.sleep(1)
+            time.sleep(10)
             self.check_position_status()
             
             # Nếu vẫn còn vị thế, thử đóng lại
-            if self.position_open:
+            '''if self.position_open:
                 self.log(f"⚠️ Vị thế chưa đóng, thử đóng lại")
                 self.close_position("Thử đóng lại")
-                return
+                return'''
                     
             # Reset trạng thái
             self.status = "waiting"
