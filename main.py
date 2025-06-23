@@ -95,7 +95,7 @@ def create_cancel_keyboard():
 
 def create_symbols_keyboard():
     """Tạo bàn phím chọn cặp coin"""
-    popular_symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT"]
+    popular_symbols = ["SUIUSDT", "DOGEUSDT", "1000PEPEUSDT", "TRUMPUSDT", "XRPUSDT", "ADAUSDT"]
     keyboard = []
     row = []
     for symbol in popular_symbols:
