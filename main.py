@@ -598,9 +598,9 @@ class IndicatorBot:
         
         if rsi_val is not None:
             self.last_rsi = rsi_val
-            if rsi_val >= 55: 
+            if 65>= rsi_val >= 55 or rsi_val < 35: 
                 return "BUY"
-            if rsi_val <= 45: 
+            if 35 <= rsi_val <= 45 or rsi_val >65: 
                 return "SELL"
                     
         return None
