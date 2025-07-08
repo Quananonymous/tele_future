@@ -315,7 +315,7 @@ def get_positions(symbol=None):
         send_telegram(f"⚠️ <b>LỖI VỊ THẾ:</b> {symbol if symbol else ''} - {str(e)}")
     return []
 
-# ========== TÍNH CHỈ BÁO KỸ THUẬT VỚI KIỂM TRA DỮ LIỆU ==========
+# ========== TÍNH CHỈ BÁO KỸ THUẬT NÂNG CAO ==========
 def calc_rsi(prices, period=14):
     try:
         if len(prices) < period + 1:
@@ -337,6 +337,102 @@ def calc_rsi(prices, period=14):
         logger.error(f"Lỗi tính RSI: {str(e)}")
         return None
 
+def calc_ema(prices, period):
+    """Tính Exponential Moving Average (EMA)"""
+    if len(prices) < period:
+        return None
+    weights = np.exp(np.linspace(-1, 0, period))
+    weights /= weights.sum()
+    return np.convolve(prices[-period:], weights, mode='valid')[-1]
+
+def calc_macd(prices, fast=12, slow=26, signal=9):
+    """Tính MACD và đường tín hiệu"""
+    if len(prices) < slow + signal:
+        return None, None
+        
+    ema_fast = calc_ema(prices, fast)
+    ema_slow = calc_ema(prices, slow)
+    
+    if ema_fast is None or ema_slow is None:
+        return None, None
+        
+    macd_line = ema_fast - ema_slow
+    macd_signal = calc_ema(prices[-slow:], signal) if len(prices) >= slow + signal else None
+    
+    return macd_line, macd_signal
+
+def calc_bollinger_bands(prices, period=20, std_dev=2):
+    """Tính Bollinger Bands"""
+    if len(prices) < period:
+        return None, None, None
+        
+    sma = np.mean(prices[-period:])
+    std = np.std(prices[-period:])
+    
+    upper_band = sma + (std * std_dev)
+    lower_band = sma - (std * std_dev)
+    
+    return upper_band, sma, lower_band
+
+def calc_stochastic(prices, lows, highs, period=14, k_period=3):
+    """Tính Stochastic Oscillator"""
+    if len(prices) < period + k_period or len(lows) < period or len(highs) < period:
+        return None, None
+        
+    current_close = prices[-1]
+    low_min = min(lows[-period:])
+    high_max = max(highs[-period:])
+    
+    if high_max - low_min == 0:
+        return None, None
+        
+    k = 100 * (current_close - low_min) / (high_max - low_min)
+    
+    # Tính %D (signal line)
+    d_values = [k]
+    for i in range(2, k_period+1):
+        if len(prices) < period + i:
+            continue
+        prev_close = prices[-i]
+        prev_low = min(lows[-period-i:-i] or [0])
+        prev_high = max(highs[-period-i:-i] or [1])
+        if prev_high - prev_low == 0:
+            continue
+        d_val = 100 * (prev_close - prev_low) / (prev_high - prev_low)
+        d_values.append(d_val)
+    
+    d = np.mean(d_values) if d_values else None
+    
+    return k, d
+
+def calc_vwma(prices, volumes, period=20):
+    """Tính Volume Weighted Moving Average (VWMA)"""
+    if len(prices) < period or len(volumes) < period:
+        return None
+        
+    prices_slice = prices[-period:]
+    volumes_slice = volumes[-period:]
+    total_volume = sum(volumes_slice)
+    
+    if total_volume == 0:
+        return None
+        
+    return sum(p * v for p, v in zip(prices_slice, volumes_slice)) / total_volume
+
+def calc_atr(highs, lows, closes, period=14):
+    """Tính Average True Range (ATR)"""
+    if len(highs) < period or len(lows) < period or len(closes) < period:
+        return None
+        
+    tr = []
+    for i in range(1, len(closes)):
+        h = highs[i]
+        l = lows[i]
+        pc = closes[i-1]
+        tr.append(max(h-l, abs(h-pc), abs(l-pc)))
+    
+    return np.mean(tr[-period:]) if tr else None
+
 # ========== QUẢN LÝ WEBSOCKET HIỆU QUẢ VỚI KIỂM SOÁT LỖI ==========
 class WebSocketManager:
     def __init__(self):
@@ -355,15 +451,20 @@ class WebSocketManager:
         if self._stop_event.is_set():
             return
             
-        stream = f"{symbol.lower()}@trade"
+        # Sử dụng kênh kline 1 phút để lấy thêm dữ liệu
+        stream = f"{symbol.lower()}@kline_1m"
         url = f"wss://fstream.binance.com/ws/{stream}"
         
         def on_message(ws, message):
             try:
                 data = json.loads(message)
-                if 'p' in data:
-                    price = float(data['p'])
-                    self.executor.submit(callback, price)
+                kline = data.get('k', {})
+                if kline and kline.get('x'):  # Chỉ xử lý khi nến đã đóng
+                    close = float(kline['c'])
+                    volume = float(kline['v'])
+                    high = float(kline['h'])
+                    low = float(kline['l'])
+                    self.executor.submit(callback, close, volume, high, low)
             except Exception as e:
                 logger.error(f"Lỗi xử lý tin nhắn WebSocket {symbol}: {str(e)}")
                 
@@ -394,7 +495,7 @@ class WebSocketManager:
             'thread': thread,
             'callback': callback
         }
-        logger.info(f"WebSocket bắt đầu cho {symbol}")
+        logger.info(f"WebSocket bắt đầu cho {symbol} (kline_1m)")
         
     def _reconnect(self, symbol, callback):
         logger.info(f"Kết nối lại WebSocket cho {symbol}")
@@ -417,54 +518,112 @@ class WebSocketManager:
         for symbol in list(self.connections.keys()):
             self.remove_symbol(symbol)
 
-# ========== BOT CHÍNH VỚI ĐÓNG LỆNH CHÍNH XÁC ==========
+# ========== BOT CHÍNH VỚI ĐA CHỈ BÁO ==========
 class IndicatorBot:
-    def __init__(self, symbol, lev, percent, tp, sl, indicator, ws_manager):
+    def __init__(self, symbol, lev, percent, tp, sl, indicator_config=None, ws_manager=None):
         self.symbol = symbol.upper()
         self.lev = lev
         self.percent = percent
         self.tp = tp
         self.sl = sl
-        self.indicator = indicator
+        
+        # Cấu hình chỉ báo mặc định nếu không có cấu hình
+        self.indicator_config = indicator_config or {
+            'rsi': {'period': 14},
+            'macd': {'fast': 12, 'slow': 26, 'signal': 9},
+            'bollinger': {'period': 20, 'std_dev': 2},
+            'stochastic': {'period': 14, 'k_period': 3},
+            'vwma': {'period': 20},
+            'atr': {'period': 14}
+        }
+        
         self.ws_manager = ws_manager
         self.status = "waiting"
         self.side = ""
         self.qty = 0
         self.entry = 0
         self.prices = []
+        self.volumes = []
+        self.highs = []
+        self.lows = []
+        self.closes = []
         self._stop = False
         self.position_open = False
         self.last_trade_time = 0
-        self.last_rsi = 50
         self.position_check_interval = 60
         self.last_position_check = 0
         self.last_error_log_time = 0
         self.last_close_time = 0
-        self.cooldown_period = 60  # Thời gian chờ sau khi đóng lệnh
-        self.max_position_attempts = 3  # Số lần thử tối đa
+        self.cooldown_period = 60
+        self.max_position_attempts = 3
         self.position_attempt_count = 0
+        self.dynamic_sl = sl  # SL động có thể thay đổi
         
         # Đăng ký với WebSocket Manager
         self.ws_manager.add_symbol(self.symbol, self._handle_price_update)
+        
+        # TẢI DỮ LIỆU LỊCH SỬ NGAY KHI KHỞI ĐỘNG
+        self._fetch_initial_data()
         
         # Bắt đầu thread chính
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
         self.log(f"🟢 Bot khởi động cho {self.symbol}")
 
+    def _fetch_initial_data(self, limit=200):
+        """Tải dữ liệu nến lịch sử khi khởi động bot"""
+        try:
+            # Lấy dữ liệu nến 1 phút
+            url = "https://fapi.binance.com/fapi/v1/klines"
+            params = {
+                "symbol": self.symbol,
+                "interval": "1m",
+                "limit": limit
+            }
+            data = binance_api_request(url, params=params)
+            if not data:
+                return
+
+            # Xử lý dữ liệu nến
+            for candle in data:
+                self.closes.append(float(candle[4]))
+                self.highs.append(float(candle[2]))
+                self.lows.append(float(candle[3]))
+                self.volumes.append(float(candle[5]))
+                self.prices.append(float(candle[4]))  # Giá đóng cửa
+
+            # Log thông báo
+            self.log(f"Đã tải {len(data)} nến lịch sử")
+
+        except Exception as e:
+            self.log(f"Lỗi khi tải dữ liệu lịch sử: {str(e)}")
     def log(self, message):
         """Ghi log và gửi qua Telegram"""
         logger.info(f"[{self.symbol}] {message}")
         send_telegram(f"<b>{self.symbol}</b>: {message}")
 
-    def _handle_price_update(self, price):
+    def _handle_price_update(self, close, volume, high, low):
         if self._stop: 
             return
             
-        self.prices.append(price)
-        # Giới hạn số lượng giá lưu trữ
-        if len(self.prices) > 100:
-            self.prices = self.prices[-100:]
+        self.prices.append(close)
+        self.volumes.append(volume)
+        self.highs.append(high)
+        self.lows.append(low)
+        self.closes.append(close)
+        
+        # Giới hạn lịch sử để tiết kiệm bộ nhớ
+        max_history = 200
+        if len(self.prices) > max_history:
+            self.prices = self.prices[-max_history:]
+        if len(self.volumes) > max_history:
+            self.volumes = self.volumes[-max_history:]
+        if len(self.highs) > max_history:
+            self.highs = self.highs[-max_history:]
+        if len(self.lows) > max_history:
+            self.lows = self.lows[-max_history:]
+        if len(self.closes) > max_history:
+            self.closes = self.closes[-max_history:]
 
     def _run(self):
         """Luồng chính quản lý bot với kiểm soát lỗi chặt chẽ"""
@@ -565,7 +724,7 @@ class IndicatorBot:
                 
             # Tính ROI
             if self.side == "BUY":
-                profit = (current_price - self.entry) * self.qty
+                profit = (current_price - self.entry) * abs(self.qty)
             else:
                 profit = (self.entry - current_price) * abs(self.qty)
                 
@@ -579,8 +738,8 @@ class IndicatorBot:
             # Kiểm tra TP/SL
             if roi >= self.tp:
                 self.close_position(f"✅ Đạt TP {self.tp}% (ROI: {roi:.2f}%)")
-            elif roi <= -self.sl:
-                self.close_position(f"❌ Đạt SL {self.sl}% (ROI: {roi:.2f}%)")
+            elif roi <= -self.dynamic_sl:
+                self.close_position(f"❌ Đạt SL {self.dynamic_sl:.2f}% (ROI: {roi:.2f}%)")
                 
         except Exception as e:
             if time.time() - self.last_error_log_time > 10:
@@ -588,21 +747,112 @@ class IndicatorBot:
                 self.last_error_log_time = time.time()
 
     def get_signal(self):
-        if len(self.prices) < 40:
+        """Tạo tín hiệu dựa trên kết hợp các chỉ báo"""
+        # Kiểm tra đủ dữ liệu
+        min_data = max(
+            100,
+            self.indicator_config['rsi']['period'] + 30,
+            self.indicator_config['macd']['slow'] + self.indicator_config['macd']['signal'],
+            self.indicator_config['bollinger']['period'],
+            self.indicator_config['stochastic']['period'] + self.indicator_config['stochastic']['k_period'],
+            self.indicator_config['vwma']['period'],
+            self.indicator_config['atr']['period']
+        )
+        
+        if len(self.prices) < min_data or len(self.volumes) < min_data or \
+           len(self.highs) < min_data or len(self.lows) < min_data:
             return None
             
-        prices_arr = np.array(self.prices)
+        signals = []
         
-        # Sử dụng RSI làm chỉ báo chính
-        rsi_val = calc_rsi(prices_arr)
-        
+        # 1. RSI
+        rsi_val = calc_rsi(
+            self.prices, 
+            self.indicator_config['rsi']['period']
+        )
         if rsi_val is not None:
-            self.last_rsi = rsi_val
-            if 78.6 >= rsi_val >= 61.8 or rsi_val < 23.6: 
-                return "BUY"
-            if 23.6 <= rsi_val <= 38.2 or rsi_val > 78.6: 
-                return "SELL"
-                    
+            if rsi_val < 30:
+                signals.append(1)  # Tín hiệu mua
+            elif rsi_val > 70:
+                signals.append(-1) # Tín hiệu bán
+        
+        # 2. MACD
+        macd_line, macd_signal = calc_macd(
+            self.prices,
+            self.indicator_config['macd']['fast'],
+            self.indicator_config['macd']['slow'],
+            self.indicator_config['macd']['signal']
+        )
+        if macd_line is not None and macd_signal is not None:
+            if macd_line > macd_signal:
+                signals.append(1)
+            elif macd_line < macd_signal:
+                signals.append(-1)
+        
+        # 3. Bollinger Bands
+        upper, middle, lower = calc_bollinger_bands(
+            self.prices,
+            self.indicator_config['bollinger']['period'],
+            self.indicator_config['bollinger']['std_dev']
+        )
+        if upper is not None and lower is not None:
+            current_price = self.prices[-1]
+            if current_price < lower:
+                signals.append(1)
+            elif current_price > upper:
+                signals.append(-1)
+        
+        # 4. Stochastic
+        k, d = calc_stochastic(
+            self.prices,
+            self.lows,
+            self.highs,
+            self.indicator_config['stochastic']['period'],
+            self.indicator_config['stochastic']['k_period']
+        )
+        if k is not None and d is not None:
+            if k < 20 and d < 20 and k > d:
+                signals.append(1)
+            elif k > 80 and d > 80 and k < d:
+                signals.append(-1)
+        
+        # 5. VWMA
+        vwma = calc_vwma(
+            self.prices,
+            self.volumes,
+            self.indicator_config['vwma']['period']
+        )
+        if vwma is not None:
+            if self.prices[-1] > vwma:
+                signals.append(1)
+            else:
+                signals.append(-1)
+        
+        # Tính SL động dựa trên ATR
+        atr = calc_atr(
+            self.highs,
+            self.lows,
+            self.closes,
+            self.indicator_config['atr']['period']
+        )
+        if atr is not None and self.entry > 0:
+            # SL = 1.5 * ATR (tính theo % giá vào)
+            atr_percent = (atr / self.entry) * 100
+            self.dynamic_sl = min(self.sl, max(1, 1.5 * atr_percent))
+        
+        # Xác định tín hiệu tổng hợp
+        if not signals:
+            return None
+            
+        # Chiến lược kết hợp: Cần ít nhất 3 tín hiệu đồng thuận
+        buy_signals = sum(1 for s in signals if s > 0)
+        sell_signals = sum(1 for s in signals if s < 0)
+        
+        if buy_signals >= 3:
+            return "BUY"
+        elif sell_signals >= 3:
+            return "SELL"
+            
         return None
 
     def open_position(self, side):
@@ -647,10 +897,10 @@ class IndicatorBot:
             # Tính số lượng với đòn bẩy
             qty = (usdt_amount * self.lev) / price
             
-            # Làm tròn số lượng theo step size
+            # Làm tròn số lượng theo step size (luôn làm tròn xuống)
             if step > 0:
                 steps = qty / step
-                qty = round(steps) * step
+                qty = math.floor(steps) * step  # Luôn làm tròn xuống
             
             qty = max(qty, 0)
             qty = round(qty, 8)
@@ -695,7 +945,7 @@ class IndicatorBot:
                 f"📊 Khối lượng: {executed_qty}\n"
                 f"💵 Giá trị: {executed_qty * self.entry:.2f} USDT\n"
                 f"⚖️ Đòn bẩy: {self.lev}x\n"
-                f"🎯 TP: {self.tp}% | 🛡️ SL: {self.sl}%"
+                f"🎯 TP: {self.tp}% | 🛡️ SL: {self.dynamic_sl:.2f}%"
             )
             self.log(message)
 
@@ -709,6 +959,11 @@ class IndicatorBot:
             # Hủy lệnh tồn đọng
             cancel_all_orders(self.symbol)
             
+            # Kiểm tra lại trạng thái
+            self.check_position_status()
+            if not self.position_open:
+                return
+                
             if abs(self.qty) > 0:
                 close_side = "SELL" if self.side == "BUY" else "BUY"
                 close_qty = abs(self.qty)
@@ -718,11 +973,17 @@ class IndicatorBot:
                 if step > 0:
                     # Tính toán chính xác số bước
                     steps = close_qty / step
-                    # Làm tròn đến số nguyên gần nhất
-                    close_qty = round(steps) * step
+                    # Làm tròn xuống
+                    close_qty = math.floor(steps) * step
                 
                 close_qty = max(close_qty, 0)
                 close_qty = round(close_qty, 8)
+                
+                # Kiểm tra khối lượng tối thiểu
+                min_qty = step
+                if close_qty < min_qty:
+                    # Nếu quá nhỏ, thử dùng số lượng gốc (không làm tròn)
+                    close_qty = abs(self.qty)
                 
                 res = place_order(self.symbol, close_side, close_qty)
                 if res:
@@ -787,7 +1048,7 @@ class BotManager:
         )
         send_telegram(welcome, chat_id, create_menu_keyboard())
 
-    def add_bot(self, symbol, lev, percent, tp, sl, indicator):
+    def add_bot(self, symbol, lev, percent, tp, sl, indicator_config=None):
         symbol = symbol.upper()
         if symbol in self.bots:
             self.log(f"⚠️ Đã có bot cho {symbol}")
@@ -814,7 +1075,7 @@ class BotManager:
             # Tạo bot mới
             bot = IndicatorBot(
                 symbol, lev, percent, tp, sl, 
-                indicator, self.ws_manager
+                indicator_config, self.ws_manager
             )
             self.bots[symbol] = bot
             self.log(f"✅ Đã thêm bot: {symbol} | ĐB: {lev}x | %: {percent} | TP/SL: {tp}%/{sl}%")
@@ -879,7 +1140,7 @@ class BotManager:
                             f"🏷️ Giá vào: {bot.entry:.4f}\n"
                             f"📊 Khối lượng: {abs(bot.qty)}\n"
                             f"⚖️ Đòn bẩy: {bot.lev}x\n"
-                            f"🎯 TP: {bot.tp}% | 🛡️ SL: {bot.sl}%"
+                            f"🎯 TP: {bot.tp}% | 🛡️ SL: {bot.dynamic_sl:.2f}%"
                         )
                         send_telegram(status_msg)
                 
@@ -1014,7 +1275,7 @@ class BotManager:
                         percent = user_state['percent']
                         tp = user_state['tp']
                         
-                        if self.add_bot(symbol, leverage, percent, tp, sl, "RSI"):
+                        if self.add_bot(symbol, leverage, percent, tp, sl):
                             send_telegram(
                                 f"✅ <b>ĐÃ THÊM BOT THÀNH CÔNG</b>\n\n"
                                 f"📌 Cặp: {symbol}\n"
@@ -1127,7 +1388,20 @@ def main():
     # Thêm các bot từ cấu hình
     if BOT_CONFIGS:
         for config in BOT_CONFIGS:
-            manager.add_bot(*config)
+            # Xử lý cả cấu hình cũ và mới
+            if isinstance(config, list):
+                # Cấu hình cũ: [symbol, lev, percent, tp, sl]
+                manager.add_bot(*config[:5])
+            elif isinstance(config, dict):
+                # Cấu hình mới với chỉ báo
+                manager.add_bot(
+                    config['symbol'],
+                    config['lev'],
+                    config['percent'],
+                    config['tp'],
+                    config['sl'],
+                    config.get('indicator_config')
+                )
     else:
         manager.log("⚠️ Không có cấu hình bot nào được tìm thấy!")
     
