@@ -773,9 +773,9 @@ class IndicatorBot:
             self.indicator_config['rsi']['period']
         )
         if rsi_val is not None:
-            if rsi_val < 15:
+            if rsi_val < 10:
                 signals.append(1)  # Tín hiệu mua
-            elif rsi_val > 85:
+            elif rsi_val > 90:
                 signals.append(-1) # Tín hiệu bán
         
         # 2. MACD
@@ -838,9 +838,9 @@ class IndicatorBot:
             self.indicator_config['atr']['period']
         )
         if atr is not None and self.entry > 0:
-            # SL = 1.5 * ATR (tính theo % giá vào)
+            # SL = 10 * ATR (tính theo % giá vào)
             atr_percent = (atr / self.entry) * 100
-            self.dynamic_sl = min(self.sl, max(1, 1.5 * atr_percent))
+            self.dynamic_sl = min(self.sl, max(1, 10 * atr_percent))
         
         # Xác định tín hiệu tổng hợp
         if not signals:
