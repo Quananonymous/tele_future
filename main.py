@@ -640,7 +640,7 @@ class IndicatorBot:
                 if not self.position_open and self.status == "waiting":
                     # Kiểm tra thời gian chờ sau khi đóng lệnh
                     if current_time - self.last_close_time < self.cooldown_period:
-                        time.sleep(1)
+                        time.sleep(60)
                         continue
                     
                     signal = self.get_signal()
@@ -653,7 +653,7 @@ class IndicatorBot:
                 if self.position_open and self.status == "open":
                     self.check_tp_sl()
                 
-                time.sleep(1)
+                time.sleep(60)
                 
             except Exception as e:
                 if time.time() - self.last_error_log_time > 10:
