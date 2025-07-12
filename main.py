@@ -899,10 +899,10 @@ class IndicatorBot:
             # Tính số lượng với đòn bẩy
             qty = (usdt_amount * self.lev) / price
             
-            # Làm tròn số lượng theo step size (luôn làm tròn xuống)
+            # Làm tròn số lượng theo step size
             if step > 0:
                 steps = qty / step
-                qty = math.floor(steps) * step  # Luôn làm tròn xuống
+                qty = round(steps) * step
             
             qty = max(qty, 0)
             qty = round(qty, 8)
@@ -947,70 +947,45 @@ class IndicatorBot:
                 f"📊 Khối lượng: {executed_qty}\n"
                 f"💵 Giá trị: {executed_qty * self.entry:.2f} USDT\n"
                 f"⚖️ Đòn bẩy: {self.lev}x\n"
-                f"🎯 TP: {self.tp}% | 🛡️ SL: {self.dynamic_sl:.2f}%"
+                f"🎯 TP: {self.tp}% | 🛡️ SL: {self.sl}%"
             )
             self.log(message)
 
         except Exception as e:
             self.position_open = False
             self.log(f"❌ Lỗi khi vào lệnh: {str(e)}")
+
     def close_position(self, reason=""):
+        """Đóng vị thế với số lượng chính xác, không kiểm tra lại trạng thái"""
         try:
-            # Kiểm tra lại trạng thái trước khi đóng
-            self.check_position_status()
-            if not self.position_open:
-                return
-                
-            # Lấy thông tin vị thế MỚI NHẤT từ API
-            positions = get_positions(self.symbol)
-            if not positions:
-                return
-                
-            # Tìm vị thế chính xác
-            current_qty = 0
-            for pos in positions:
-                if pos['symbol'] == self.symbol:
-                    current_qty = float(pos.get('positionAmt', 0))
-                    break
-                    
-            if current_qty == 0:
-                self.position_open = False
-                self.status = "waiting"
-                return
-                
-            # Xác định hướng đóng
-            close_side = "SELL" if current_qty > 0 else "BUY"
-            close_qty = abs(current_qty)
+            # Hủy lệnh tồn đọng
+            cancel_all_orders(self.symbol)
             
-            # Làm tròn số lượng CHÍNH XÁC theo step size của Binance
-            step = get_step_size(self.symbol)
-            if step > 0:
-                # Tính toán chính xác số bước
-                steps = close_qty / step
-                # Làm tròn xuống (floor) để đảm bảo không vượt quá số lượng hiện có
-                close_qty = math.floor(steps) * step
-            
-            # Đảm bảo số lượng tối thiểu
-            min_qty = step
-            if close_qty < min_qty:
-                close_qty = abs(current_qty)  # Dùng số lượng gốc nếu quá nhỏ
-            
-            # Đặt lệnh đóng với số lượng CHÍNH XÁC
-            res = place_order(self.symbol, close_side, close_qty)
-            time.sleep(60)
-            if res:
-                executed_qty = float(res.get('executedQty', 0))
+            if abs(self.qty) > 0:
+                close_side = "SELL" if self.side == "BUY" else "BUY"
+                close_qty = abs(self.qty)
                 
-                # Kiểm tra xem đã đóng hết chưa
-                if executed_qty >= abs(current_qty) * 0.99:  # Cho phép sai số 1%
-                    # Thông báo thành công
+                # Làm tròn số lượng CHÍNH XÁC
+                step = get_step_size(self.symbol)
+                if step > 0:
+                    # Tính toán chính xác số bước
+                    steps = close_qty / step
+                    # Làm tròn đến số nguyên gần nhất
+                    close_qty = round(steps) * step
+                
+                close_qty = max(close_qty, 0)
+                close_qty = round(close_qty, 8)
+                
+                res = place_order(self.symbol, close_side, close_qty)
+                if res:
                     price = float(res.get('avgPrice', 0))
+                    # Thông báo qua Telegram
                     message = (
                         f"⛔ <b>ĐÃ ĐÓNG VỊ THẾ {self.symbol}</b>\n"
                         f"📌 Lý do: {reason}\n"
                         f"🏷️ Giá ra: {price:.4f}\n"
-                        f"📊 Khối lượng: {executed_qty}\n"
-                        f"💵 Giá trị: {executed_qty * price:.2f} USDT"
+                        f"📊 Khối lượng: {close_qty}\n"
+                        f"💵 Giá trị: {close_qty * price:.2f} USDT"
                     )
                     self.log(message)
                     
@@ -1021,40 +996,11 @@ class IndicatorBot:
                     self.entry = 0
                     self.position_open = False
                     self.last_trade_time = time.time()
-                    self.last_close_time = time.time()
+                    self.last_close_time = time.time()  # Ghi nhận thời điểm đóng lệnh
                 else:
-                    # Xử lý trường hợp đóng không hết
-                    remaining = abs(current_qty) - executed_qty
-                    self.log(f"⚠️ Đóng chưa hết! Còn lại: {remaining}, thử đóng phần còn lại")
-                    
-                    # Thử đóng phần còn lại
-                    retry_qty = remaining
-                    if step > 0:
-                        retry_steps = retry_qty / step
-                        retry_qty = math.floor(retry_steps) * step
-                    
-                    if retry_qty >= min_qty:
-                        retry_res = place_order(self.symbol, close_side, retry_qty)
-                        if retry_res:
-                            total_executed = executed_qty + float(retry_res.get('executedQty', 0))
-                            self.log(f"✅ Đã đóng thêm: {total_executed - executed_qty}, tổng: {total_executed}")
-                            
-                            # Cập nhật trạng thái nếu đóng thành công
-                            if total_executed >= abs(current_qty) * 0.99:
-                                self.status = "waiting"
-                                self.side = ""
-                                self.qty = 0
-                                self.entry = 0
-                                self.position_open = False
-                        else:
-                            self.log("❌ Lỗi khi đóng phần còn lại")
-                    else:
-                        self.log(f"⚠️ Số lượng còn lại quá nhỏ ({retry_qty}), không thể đóng")
-            else:
-                self.log(f"❌ Lỗi khi đặt lệnh đóng")
+                    self.log(f"Lỗi khi đóng lệnh")
         except Exception as e:
-            self.log(f"❌ Lỗi nghiêm trọng khi đóng lệnh: {str(e)}")
-
+            self.log(f"❌ Lỗi khi đóng lệnh: {str(e)}")
 # ========== QUẢN LÝ BOT CHẠY NỀN VÀ TƯƠNG TÁC TELEGRAM ==========
 class BotManager:
     def __init__(self):
