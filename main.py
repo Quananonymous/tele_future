@@ -997,6 +997,7 @@ class IndicatorBot:
             
             # Đặt lệnh đóng với số lượng CHÍNH XÁC
             res = place_order(self.symbol, close_side, close_qty)
+            time.sleep(60)
             if res:
                 executed_qty = float(res.get('executedQty', 0))
                 
