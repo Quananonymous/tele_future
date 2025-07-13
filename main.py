@@ -773,9 +773,9 @@ class IndicatorBot:
             self.indicator_config['rsi']['period']
         )
         if rsi_val is not None:
-            if rsi_val < 10:
+            if 55 <= rsi_val < 70:
                 signals.append(1)  # Tín hiệu mua
-            elif rsi_val > 90:
+            elif 45 >= rsi_val > 30:
                 signals.append(-1) # Tín hiệu bán
         
         # 2. MACD
