@@ -768,15 +768,59 @@ class IndicatorBot:
         signals = []
         
         # 1. RSI
-        rsi_val = calc_rsi(
-            self.prices, 
-            self.indicator_config['rsi']['period']
-        )
-        if rsi_val is not None:
-            if 55 <= rsi_val < 70:
-                signals.append(1)  # Tín hiệu mua
-            elif 45 >= rsi_val > 30:
-                signals.append(-1) # Tín hiệu bán
+        if len(self.prices) < 40:
+            return None
+    
+        prices_arr = np.array(self.prices)
+        a = calc_rsi(prices_arr)
+        
+        if a > 70:
+            time.sleep(3)
+        
+            prices_arr = np.array(self.prices)
+            b = calc_rsi(prices_arr)
+
+        
+            if b is None:
+                return None
+            if a > b:
+                
+                time.sleep(3)
+            
+                prices_arr = np.array(self.prices)
+                c = calc_rsi(prices_arr)
+            
+                if c is None:
+                    return None
+                if b > c and c < 45:
+                    signals.append(-1)
+                    
+                    
+        elif a < 30:
+            time.sleep(3)
+        
+            prices_arr = np.array(self.prices)
+            b = calc_rsi(prices_arr)
+
+            if b is None:
+                return None
+            if a < b:
+                
+                time.sleep(3)
+            
+                prices_arr = np.array(self.prices)
+                c = calc_rsi(prices_arr)
+            
+                if c is None:
+                    return None
+
+                if b < c and c > 55:
+                    signals.append(1)
+                    
+
+        return None
+
+
         
         # 2. MACD
         macd_line, macd_signal = calc_macd(
