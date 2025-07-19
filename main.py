@@ -419,41 +419,32 @@ class WebSocketManager:
             
 # ========== HÀM TÍNH BOLLINGER BANDS VÀ KELTNER CHANNEL SQUEEZE ==========
 def calc_bollinger_keltner_squeeze(prices, bb_period=20, bb_mult=2, kc_period=20, kc_mult=1.5):
-    """
-    Tính toán tín hiệu 'squeeze' dựa trên Bollinger Bands và Keltner Channel
-    Trả về: 
-        - 1: Squeeze đang hoạt động (chuẩn bị breakout)
-        - 0: Không có tín hiệu
-        - -1: Squeeze kết thúc (breakout bắt đầu)
-    """
     if len(prices) < max(bb_period, kc_period) + 10:
         return 0
 
-    # Tính Bollinger Bands
     rolling_mean = np.mean(prices[-bb_period:])
     rolling_std = np.std(prices[-bb_period:])
     bb_upper = rolling_mean + bb_mult * rolling_std
     bb_lower = rolling_mean - bb_mult * rolling_std
-    
-    # Tính Keltner Channel
+
     high = np.max(prices[-kc_period:])
     low = np.min(prices[-kc_period:])
     kc_middle = np.mean(prices[-kc_period:])
     kc_upper = kc_middle + kc_mult * (high - low)
     kc_lower = kc_middle - kc_mult * (high - low)
-    
-    # Xác định squeeze
-    squeeze_on = (bb_upper < kc_upper) and (bb_lower > kc_lower)
+
+    # Thêm margin để tránh squeeze ảo
+    squeeze_on = (bb_upper < kc_upper * 0.98) and (bb_lower > kc_lower * 1.02)
     squeeze_off = (bb_upper > kc_upper) and (bb_lower < kc_lower)
-    
-    # Xác định momentum
+
     momentum = np.mean(prices[-3:]) - np.mean(prices[-6:-3])
-    
+
     if squeeze_on:
         return 1
     elif squeeze_off and abs(momentum) > 0.5 * rolling_std:
-        return -1 if momentum < 0 else 1
+        return -1  # breakout xảy ra
     return 0
+
 
 # ========== BOT CHÍNH VỚI ĐÓNG LỆNH CHÍNH XÁC ==========
 class IndicatorBot:
@@ -651,7 +642,6 @@ class IndicatorBot:
         # Ghi nhận trạng thái squeeze
         if squeeze_signal == 1:
             self.squeeze_state = 1
-            self.log(f"🔶 SQUEEZE DETECTED trên {self.symbol}")
             
         # Tín hiệu breakout khi squeeze kết thúc
         if self.squeeze_state == 1 and squeeze_signal == -1:
