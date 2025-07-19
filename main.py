@@ -670,11 +670,11 @@ class IndicatorBot:
                 return "SELL"
         
         # Thêm bộ lọc biến động
-        volatility = np.std(self.prices[-20:]) / np.mean(self.prices[-20:])
+        #volatility = np.std(self.prices[-20:]) / np.mean(self.prices[-20:])
         
         # Chỉ giao dịch khi biến động đủ lớn
-        if volatility < 0.02:  # 2%
-            return None
+        #if volatility < 0.02:  # 2%
+        #    return None
 
         return None
 
