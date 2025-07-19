@@ -418,6 +418,16 @@ class WebSocketManager:
             self.remove_symbol(symbol)
             
 # ========== HÀM TÍNH BOLLINGER BANDS VÀ KELTNER CHANNEL SQUEEZE ==========
+def load_historical_prices(symbol, interval='1m', limit=100):
+    try:
+        url = f"https://fapi.binance.com/fapi/v1/klines?symbol={symbol.upper()}&interval={interval}&limit={limit}"
+        data = requests.get(url, timeout=10).json()
+        close_prices = [float(candle[4]) for candle in data]
+        return close_prices
+    except Exception as e:
+        logger.error(f"Lỗi tải giá lịch sử: {str(e)}")
+        return []
+
 def calc_bollinger_keltner_squeeze(prices, bb_period=20, bb_mult=2, kc_period=20, kc_mult=1.5):
     if len(prices) < max(bb_period, kc_period) + 10:
         return 0
@@ -434,14 +444,14 @@ def calc_bollinger_keltner_squeeze(prices, bb_period=20, bb_mult=2, kc_period=20
     kc_lower = kc_middle - kc_mult * (high - low)
 
     # Thêm margin để tránh squeeze ảo
-    squeeze_on = (bb_upper < kc_upper * 0.98) and (bb_lower > kc_lower * 1.02)
+    squeeze_on = (bb_upper < kc_upper * 0.99) and (bb_lower > kc_lower * 1.01)
     squeeze_off = (bb_upper > kc_upper) and (bb_lower < kc_lower)
 
     momentum = np.mean(prices[-3:]) - np.mean(prices[-6:-3])
 
     if squeeze_on:
         return 1
-    elif squeeze_off and abs(momentum) > 0.5 * rolling_std:
+    elif squeeze_off and abs(momentum) > 0.35 * rolling_std:
         return -1  # breakout xảy ra
     return 0
 
@@ -476,6 +486,8 @@ class IndicatorBot:
         self.position_attempt_count = 0
         self.squeeze_state = 0  # 0: không squeeze, 1: squeeze đang hoạt động
         self.last_squeeze_signal = 0
+        self.prices = load_historical_prices(self.symbol, '1m', 100)
+
         
         # Đăng ký với WebSocket Manager
         self.ws_manager.add_symbol(self.symbol, self._handle_price_update)
