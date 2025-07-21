@@ -462,7 +462,7 @@ def calc_bollinger_keltner_squeeze(prices, bb_period=20, bb_mult=2, kc_period=20
     kc_lower = kc_middle - kc_mult * (high - low)
 
     # Thêm margin để tránh squeeze ảo
-    squeeze_on = (bb_upper < kc_upper * 0.99) and (bb_lower > kc_lower * 1.01)
+    squeeze_on = (bb_upper < kc_upper * 0.995) and (bb_lower > kc_lower * 1.005)
     squeeze_off = (bb_upper > kc_upper) and (bb_lower < kc_lower)
 
     # Tính momentum với khoảng thời gian linh hoạt
@@ -474,7 +474,7 @@ def calc_bollinger_keltner_squeeze(prices, bb_period=20, bb_mult=2, kc_period=20
 
     if squeeze_on:
         return 1
-    elif squeeze_off and abs(momentum) > 0.35 * rolling_std:
+    elif squeeze_off and abs(momentum) > 0.2 * rolling_std:
         return -1  # breakout xảy ra
     return 0
 
