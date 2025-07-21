@@ -198,6 +198,22 @@ def get_step_size(symbol):
         send_telegram(f"⚠️ <b>LỖI STEP SIZE:</b> {symbol} - {str(e)}")
     return 0.001
 
+def get_min_qty(symbol):
+    url = "https://fapi.binance.com/fapi/v1/exchangeInfo"
+    try:
+        data = binance_api_request(url)
+        if not data:
+            return 0.001
+            
+        for s in data['symbols']:
+            if s['symbol'] == symbol.upper():
+                for f in s['filters']:
+                    if f['filterType'] == 'LOT_SIZE':
+                        return float(f['minQty'])
+    except Exception as e:
+        logger.error(f"Lỗi lấy min qty: {str(e)}")
+    return 0.001
+
 def set_leverage(symbol, lev):
     try:
         ts = int(time.time() * 1000)
@@ -429,7 +445,8 @@ def load_historical_prices(symbol, interval='1m', limit=100):
         return []
 
 def calc_bollinger_keltner_squeeze(prices, bb_period=20, bb_mult=2, kc_period=20, kc_mult=1.5):
-    if len(prices) < max(bb_period, kc_period) + 10:
+    min_period = max(bb_period, kc_period)
+    if len(prices) < min_period * 2:  # Cần ít nhất gấp đôi chu kỳ
         return 0
 
     rolling_mean = np.mean(prices[-bb_period:])
@@ -447,7 +464,12 @@ def calc_bollinger_keltner_squeeze(prices, bb_period=20, bb_mult=2, kc_period=20
     squeeze_on = (bb_upper < kc_upper * 0.99) and (bb_lower > kc_lower * 1.01)
     squeeze_off = (bb_upper > kc_upper) and (bb_lower < kc_lower)
 
-    momentum = np.mean(prices[-3:]) - np.mean(prices[-6:-3])
+    # Tính momentum với khoảng thời gian linh hoạt
+    momentum_period = max(3, bb_period // 5)
+    if len(prices) > momentum_period * 2:
+        momentum = np.mean(prices[-momentum_period:]) - np.mean(prices[-momentum_period*2:-momentum_period])
+    else:
+        momentum = 0
 
     if squeeze_on:
         return 1
@@ -486,8 +508,11 @@ class IndicatorBot:
         self.position_attempt_count = 0
         self.squeeze_state = 0  # 0: không squeeze, 1: squeeze đang hoạt động
         self.last_squeeze_signal = 0
+        
+        # Tải dữ liệu lịch sử đủ để tính toán chỉ báo
         self.prices = load_historical_prices(self.symbol, '1m', 100)
-
+        if not self.prices:
+            self.prices = [get_current_price(self.symbol)] * 100  # Dự phòng nếu không tải được lịch sử
         
         # Đăng ký với WebSocket Manager
         self.ws_manager.add_symbol(self.symbol, self._handle_price_update)
@@ -503,19 +528,17 @@ class IndicatorBot:
         send_telegram(f"<b>{self.symbol}</b>: {message}")
 
     def _handle_price_update(self, price):
-        if self._stop: 
+        if self._stop or price <= 0:  # Bỏ qua giá không hợp lệ
             return
             
-        self.prices.append(price)
-        # Giới hạn số lượng giá lưu trữ
-        if len(self.prices) > 100:
-            self.prices = self.prices[-100:]
-        rsi = calc_rsi(np.array(self.prices))
-        if rsi is not None:
-            self.rsi_history.append(rsi)
-            if len(self.rsi_history) > 15:
-                self.rsi_history = self.rsi_history[-15:]
-
+        # Chỉ cập nhật nếu giá mới khác giá cuối cùng
+        if not self.prices or abs(price - self.prices[-1]) > 0.0001:
+            self.prices.append(price)
+            
+            # Giữ đủ 100 điểm dữ liệu mới nhất
+            min_points = 100
+            if len(self.prices) > min_points:
+                self.prices = self.prices[-min_points:]
 
     def _run(self):
         """Luồng chính quản lý bot với kiểm soát lỗi chặt chẽ"""
@@ -616,7 +639,7 @@ class IndicatorBot:
                 
             # Tính ROI
             if self.side == "BUY":
-                profit = (current_price - self.entry) * self.qty
+                profit = (current_price - self.entry) * abs(self.qty)
             else:
                 profit = (self.entry - current_price) * abs(self.qty)
                 
@@ -640,7 +663,7 @@ class IndicatorBot:
 
     def get_signal(self):
         """Sử dụng Bollinger Bands Squeeze để tạo tín hiệu giao dịch"""
-        if len(self.prices) < 50:
+        if len(self.prices) < 40:  # Giảm ngưỡng tối thiểu để tăng cơ hội vào lệnh
             return None
             
         squeeze_signal = calc_bollinger_keltner_squeeze(
@@ -682,11 +705,11 @@ class IndicatorBot:
                 return "SELL"
         
         # Thêm bộ lọc biến động
-        #volatility = np.std(self.prices[-20:]) / np.mean(self.prices[-20:])
+        volatility = np.std(self.prices[-20:]) / np.mean(self.prices[-20:]) if len(self.prices) > 20 else 0
         
         # Chỉ giao dịch khi biến động đủ lớn
-        #if volatility < 0.02:  # 2%
-        #    return None
+        if volatility < 0.01:  # 1%
+            return None
 
         return None
 
@@ -727,24 +750,23 @@ class IndicatorBot:
                 return
                 
             step = get_step_size(self.symbol)
+            min_qty = get_min_qty(self.symbol)
             if step <= 0:
                 step = 0.001
             
             # Tính số lượng với đòn bẩy
             qty = (usdt_amount * self.lev) / price
             
-            # Làm tròn số lượng theo step size
+            # Làm tròn số lượng theo step size (LUÔN LÀM TRÒN XUỐNG)
             if step > 0:
-                steps = qty / step
-                qty = round(steps) * step
+                qty = math.floor(qty / step) * step
             
-            qty = max(qty, 0)
+            qty = max(qty, min_qty)  # Đảm bảo không nhỏ hơn min_qty
             qty = round(qty, 8)
             
-            min_qty = step
-            
+            # Kiểm tra lại số lượng tối thiểu
             if qty < min_qty:
-                self.log(f"⚠️ Số lượng quá nhỏ ({qty}), không đặt lệnh")
+                self.log(f"⚠️ Số lượng quá nhỏ ({qty}), không đặt lệnh (Min: {min_qty})")
                 return
                 
             # Giới hạn số lần thử
@@ -778,7 +800,7 @@ class IndicatorBot:
                 f"✅ <b>ĐÃ MỞ VỊ THẾ {self.symbol}</b>\n"
                 f"📌 Hướng: {side}\n"
                 f"🏷️ Giá vào: {self.entry:.4f}\n"
-                f"📊 Khối lượng: {executed_qty}\n"
+                f"📊 Khối lượng: {executed_qty:.4f}\n"
                 f"💵 Giá trị: {executed_qty * self.entry:.2f} USDT\n"
                 f"⚖️ Đòn bẩy: {self.lev}x\n"
                 f"🎯 TP: {self.tp}% | 🛡️ SL: {self.sl}%"
@@ -801,13 +823,13 @@ class IndicatorBot:
                 
                 # Làm tròn số lượng CHÍNH XÁC
                 step = get_step_size(self.symbol)
+                min_qty = get_min_qty(self.symbol)
                 if step > 0:
-                    # Tính toán chính xác số bước
+                    # Tính toán chính xác số bước và LÀM TRÒN XUỐNG
                     steps = close_qty / step
-                    # Làm tròn đến số nguyên gần nhất
-                    close_qty = round(steps) * step
+                    close_qty = math.floor(steps) * step
                 
-                close_qty = max(close_qty, 0)
+                close_qty = max(close_qty, min_qty)
                 close_qty = round(close_qty, 8)
                 
                 res = place_order(self.symbol, close_side, close_qty)
@@ -818,7 +840,7 @@ class IndicatorBot:
                         f"⛔ <b>ĐÃ ĐÓNG VỊ THẾ {self.symbol}</b>\n"
                         f"📌 Lý do: {reason}\n"
                         f"🏷️ Giá ra: {price:.4f}\n"
-                        f"📊 Khối lượng: {close_qty}\n"
+                        f"📊 Khối lượng: {close_qty:.4f}\n"
                         f"💵 Giá trị: {close_qty * price:.2f} USDT"
                     )
                     self.log(message)
@@ -963,7 +985,7 @@ class BotManager:
                             f"🔹 <b>{symbol}</b>\n"
                             f"📌 Hướng: {bot.side}\n"
                             f"🏷️ Giá vào: {bot.entry:.4f}\n"
-                            f"📊 Khối lượng: {abs(bot.qty)}\n"
+                            f"📊 Khối lượng: {abs(bot.qty):.4f}\n"
                             f"⚖️ Đòn bẩy: {bot.lev}x\n"
                             f"🎯 TP: {bot.tp}% | 🛡️ SL: {bot.sl}%"
                         )
