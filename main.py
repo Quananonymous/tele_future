@@ -602,20 +602,20 @@ class IndicatorBot:
         # Điều chỉnh dựa trên tỷ lệ thành công
         if self.success_rate > 0.8:
             # Khi tỷ lệ thắng cao, tăng TP để kiếm lời nhiều hơn
-            self.tp = min(self.base_tp * 1.2, 50)  # Giới hạn TP tối đa 50%
-            self.sl = max(self.base_sl * 0.8, 1)   # Giảm SL để bảo vệ lợi nhuận
+            self.tp = min(self.base_tp * 1.2, 500)  # Giới hạn TP tối đa 50%
+            self.sl = max(self.base_sl * 0.8, 200)   # Giảm SL để bảo vệ lợi nhuận
         elif self.success_rate < 0.6:
             # Khi tỷ lệ thắng thấp, giảm TP để tăng xác suất đạt được
-            self.tp = max(self.base_tp * 0.8, 5)   # Giới hạn TP tối thiểu 5%
-            self.sl = min(self.base_sl * 1.2, 10)  # Giới hạn SL tối đa 10%
+            self.tp = max(self.base_tp * 0.8, 30)   # Giới hạn TP tối thiểu 5%
+            self.sl = min(self.base_sl * 1.2, 1000)  # Giới hạn SL tối đa 10%
         else:
             # Trường hợp bình thường
             self.tp = self.base_tp
             self.sl = self.base_sl
             
         # Điều chỉnh dựa trên biến động
-        self.tp = min(self.tp * (1 + volatility * 5), 50)
-        self.sl = min(self.sl * (1 + volatility * 3), 15)
+        self.tp = min(self.tp * (1 + volatility * 5), 500)
+        self.sl = min(self.sl * (1 + volatility * 3), 1500)
         
         self.log(f"🔧 Điều chỉnh TP/SL: {self.tp:.1f}%/{self.sl:.1f}% (Tỷ lệ thắng: {self.success_rate:.2f})")
 
