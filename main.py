@@ -517,7 +517,7 @@ class IndicatorBot:
                     
                     signal = self.get_signal()
                     
-                    if signal and current_time - self.last_trade_time > 60:
+                    if signal and current_time - self.last_trade_time > 600:
                             self.open_position(signal)
                             self.last_trade_time = current_time
 
