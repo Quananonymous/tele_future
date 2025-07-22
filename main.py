@@ -576,7 +576,8 @@ class IndicatorBot:
                 # Đóng nếu nến 5p ngược chiều
                 if self.position_open and self.status == "open":
                     reverse_signal = self.get_reverse_signal()
-                    if (self.side == "BUY" and reverse_signal == "SELL") or (self.side == "SELL" and reverse_signal == "BUY"):
+                    roi = self.get_current_roi()
+                    if (self.side == "BUY" and reverse_signal == "SELL") or (self.side == "SELL" and reverse_signal == "BUY") and roi > 15:
                         self.close_position(f"🔁 Nến ngược chiều ({reverse_signal})")
 
                 
