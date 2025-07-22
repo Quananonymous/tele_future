@@ -529,7 +529,7 @@ class IndicatorBot:
             b_2 = float(now_candle[4])
             if b_2 > a_2:
                 return "BUY"
-            elif a_2 < b_2:
+            elif a_2 > b_2:
                 return "SELL"
             else:
                 return None
