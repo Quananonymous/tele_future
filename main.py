@@ -442,7 +442,7 @@ class IndicatorBot:
         self.last_position_check = 0
         self.last_error_log_time = 0
         self.last_close_time = 0
-        self.cooldown_period = 60  # Thời gian chờ sau khi đóng lệnh
+        self.cooldown_period = 10  # Thời gian chờ sau khi đóng lệnh
         self.max_position_attempts = 3  # Số lần thử tối đa
         self.position_attempt_count = 0
         
@@ -475,7 +475,7 @@ class IndicatorBot:
                 
     def get_last_candle_signal(self):
         try:
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=5m&limit=2"
+            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=15m&limit=2"
             data = binance_api_request(url)
             if not data or len(data) < 2:
                 return None
@@ -517,7 +517,7 @@ class IndicatorBot:
                     
                     signal = self.get_signal()
                     
-                    if signal and current_time - self.last_trade_time > 0:
+                    if signal and current_time - self.last_trade_time > 60:
                             self.open_position(signal)
                             self.last_trade_time = current_time
 
