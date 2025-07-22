@@ -475,22 +475,25 @@ class IndicatorBot:
                 
     def get_last_candle_signal(self):
         try:
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=15m&limit=2"
+            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=3m&limit=2"
             data = binance_api_request(url)
             if not data or len(data) < 2:
                 return None
 
             # Lấy nến gần nhất đã đóng (nến trước cuối)
-            last_candle = data[-1]
-            open_price = float(last_candle[1])
-            close_price = float(last_candle[4])
-
-            if close_price > open_price:
-                return "BUY"
-            elif close_price < open_price:
-                return "SELL"
-            else:
-                return None
+            now_candle = data[-1]
+            last_candle = data[-2]
+            a_1 = float(last_candle[2])
+            b_1 = float(last_candle[3])
+            a_2 = float(now_candle[2])
+            b_2 = float(now_candle[3])
+            if float(last_candle[5]) <= float(now_candle[5]):
+                if (a_1 + b_1)/2 < b_2:
+                    return "BUY"
+                elif (a_1 + b_1)/2 > a_2:
+                    return "SELL"
+                else:
+                    return None
         except Exception as e:
             self.log(f"Lỗi lấy tín hiệu nến 5p: {str(e)}")
             return None
