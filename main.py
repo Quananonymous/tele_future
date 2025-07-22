@@ -527,13 +527,12 @@ class IndicatorBot:
             b_1 = float(last_candle[3])
             a_2 = float(now_candle[1])
             b_2 = float(now_candle[4])
-            if float(last_candle[5]) <= float(now_candle[5]):
-                if b_2 > a_2:
-                    return "BUY"
-                elif a_2 < b_2:
-                    return "SELL"
-                else:
-                    return None
+            if b_2 > a_2:
+                return "BUY"
+            elif a_2 < b_2:
+                return "SELL"
+            else:
+                return None
         except Exception as e:
             self.log(f"Lỗi lấy tín hiệu nến 5p: {str(e)}")
             return None
