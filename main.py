@@ -481,7 +481,7 @@ class IndicatorBot:
                 return None
 
             # Lấy nến gần nhất đã đóng (nến trước cuối)
-            last_candle = data[-2]
+            last_candle = data[-1]
             open_price = float(last_candle[1])
             close_price = float(last_candle[4])
 
@@ -517,7 +517,7 @@ class IndicatorBot:
                     
                     signal = self.get_signal()
                     
-                    if signal and current_time - self.last_trade_time > 600:
+                    if signal and current_time - self.last_trade_time > 0:
                             self.open_position(signal)
                             self.last_trade_time = current_time
 
