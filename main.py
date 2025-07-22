@@ -498,6 +498,47 @@ class IndicatorBot:
             self.log(f"Lỗi lấy tín hiệu nến 5p: {str(e)}")
             return None
 
+    def get_current_roi(self):
+        if not self.position_open or not self.entry or not self.qty:
+            return 0
+
+        current_price = self.prices[-1] if self.prices else get_current_price(self.symbol)
+
+        if self.side == "BUY":
+            profit = (current_price - self.entry) * self.qty
+        else:
+            profit = (self.entry - current_price) * abs(self.qty)
+
+        invested = self.entry * abs(self.qty) / self.lev
+        roi = (profit / invested) * 100 if invested > 0 else 0
+        return roi
+
+    def get_reverse_signal(self):
+        try:
+            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=1m&limit=2"
+            data = binance_api_request(url)
+            if not data or len(data) < 2:
+                return None
+
+            # Lấy nến gần nhất đã đóng (nến trước cuối)
+            now_candle = data[-1]
+            last_candle = data[-2]
+            a_1 = float(last_candle[2])
+            b_1 = float(last_candle[3])
+            a_2 = float(now_candle[2])
+            b_2 = float(now_candle[3])
+            if float(last_candle[5]) <= float(now_candle[5]):
+                if (a_1 + b_1)/2 < b_2:
+                    return "BUY"
+                elif (a_1 + b_1)/2 > a_2:
+                    return "SELL"
+                else:
+                    return None
+        except Exception as e:
+            self.log(f"Lỗi lấy tín hiệu nến 5p: {str(e)}")
+            return None
+
+
 
 
     def _run(self):
@@ -519,6 +560,8 @@ class IndicatorBot:
                         continue
                     
                     signal = self.get_signal()
+                    reverse_signal = self.get_reverse_signal()
+
                     
                     if signal and current_time - self.last_trade_time > 60:
                             self.open_position(signal)
@@ -532,9 +575,9 @@ class IndicatorBot:
                     # Kiểm tra tín hiệu ngược chiều để đóng vị thế
                 # Đóng nếu nến 5p ngược chiều
                 if self.position_open and self.status == "open":
-                    candle_signal = self.get_last_candle_signal()
-                    if (self.side == "BUY" and candle_signal == "SELL") or (self.side == "SELL" and candle_signal == "BUY"):
-                        self.close_position(f"🔁 Nến ngược chiều ({candle_signal})")
+                    reverse_signal = self.get_reverse_signal()
+                    if (self.side == "BUY" and reverse_signal == "SELL") or (self.side == "SELL" and reverse_signal == "BUY"):
+                        self.close_position(f"🔁 Nến ngược chiều ({reverse_signal})")
 
                 
             except Exception as e:
@@ -591,45 +634,11 @@ class IndicatorBot:
                 self.last_error_log_time = time.time()
 
     def check_tp_sl(self):
-        """Tự động kiểm tra và đóng lệnh khi đạt TP/SL với kiểm soát rủi ro"""
-        if not self.position_open or not self.entry or not self.qty:
-            return
-            
-        try:
-            if len(self.prices) > 0:
-                current_price = self.prices[-1]
-            else:
-                current_price = get_current_price(self.symbol)
-                
-            if current_price <= 0:
-                return
-                
-            # Tính ROI
-            if self.side == "BUY":
-                profit = (current_price - self.entry) * self.qty
-            else:
-                profit = (self.entry - current_price) * abs(self.qty)
-                
-            # Tính % ROI dựa trên vốn ban đầu
-            invested = self.entry * abs(self.qty) / self.lev
-            if invested <= 0:
-                return
-                
-            roi = (profit / invested) * 100
-            
-            # Kiểm tra TP/SL
-            if roi >= self.tp:
-                self.close_position(f"✅ Đạt TP {self.tp}% (ROI: {roi:.2f}%)")
-            elif roi <= -self.sl:
-                self.close_position(f"❌ Đạt SL {self.sl}% (ROI: {roi:.2f}%)")
-            elif roi == 0:
-                return None
-            
-                
-        except Exception as e:
-            if time.time() - self.last_error_log_time > 10:
-                self.log(f"Lỗi kiểm tra TP/SL: {str(e)}")
-                self.last_error_log_time = time.time()
+        roi = self.get_current_roi()
+        if roi >= self.tp:
+            self.close_position(f"🎯 Đạt TP {roi:.2f}%")
+        elif roi <= -self.sl:
+            self.close_position(f"🛑 Chạm SL {roi:.2f}%")
 
     def get_signal(self):
         return self.get_last_candle_signal()
