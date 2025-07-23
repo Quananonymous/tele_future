@@ -475,9 +475,9 @@ class IndicatorBot:
                 
     def get_last_candle_signal(self):
         try:
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=3m&limit=3"
+            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=5m&limit=3"
             data = binance_api_request(url)
-            if not data or len(data) < 2:
+            if not data or len(data) < 3:
                 return None
 
             # Lấy nến gần nhất đã đóng (nến trước cuối)
@@ -515,7 +515,7 @@ class IndicatorBot:
 
     def get_reverse_signal(self):
         try:
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=1m&limit=3"
+            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=3m&limit=3"
             data = binance_api_request(url)
             if not data or len(data) < 3:
                 return None
