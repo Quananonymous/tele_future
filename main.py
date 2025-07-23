@@ -487,7 +487,7 @@ class IndicatorBot:
             b_1 = float(last_candle[3])
             a_2 = float(now_candle[2])
             b_2 = float(now_candle[3])
-            if float(last_candle[5]) <= float(now_candle[5]):
+            if float(last_candle[5]) <= float(now_candle[5]) and abs(a_2 - b_2) > abs(a_1 - b_1):
                 if (a_1 + b_1)/2 < b_2:
                     return "BUY"
                 elif (a_1 + b_1)/2 > a_2:
@@ -576,7 +576,7 @@ class IndicatorBot:
                 if self.position_open and self.status == "open":
                     reverse_signal = self.get_reverse_signal()
                     roi = self.get_current_roi()
-                    if ((self.side == "BUY" and reverse_signal == "SELL") or (self.side == "SELL" and reverse_signal == "BUY")) and roi > 15:
+                    if ((self.side == "BUY" and reverse_signal == "SELL") or (self.side == "SELL" and reverse_signal == "BUY")) and roi > 30:
                         self.close_position(f"🔁 Nến ngược chiều ({reverse_signal})")
 
                 
