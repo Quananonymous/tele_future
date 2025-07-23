@@ -475,14 +475,14 @@ class IndicatorBot:
                 
     def get_last_candle_signal(self):
         try:
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=3m&limit=2"
+            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=3m&limit=3"
             data = binance_api_request(url)
             if not data or len(data) < 2:
                 return None
 
             # Lấy nến gần nhất đã đóng (nến trước cuối)
-            now_candle = data[-1]
-            last_candle = data[-2]
+            now_candle = data[-2]
+            last_candle = data[-3]
             a_1 = float(last_candle[2])
             b_1 = float(last_candle[3])
             a_2 = float(now_candle[2])
@@ -515,14 +515,14 @@ class IndicatorBot:
 
     def get_reverse_signal(self):
         try:
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=1m&limit=2"
+            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=1m&limit=3"
             data = binance_api_request(url)
-            if not data or len(data) < 2:
+            if not data or len(data) < 3:
                 return None
 
             # Lấy nến gần nhất đã đóng (nến trước cuối)
-            now_candle = data[-1]
-            last_candle = data[-2]
+            now_candle = data[-2]
+            last_candle = data[-3]
             a_1 = float(last_candle[2])
             b_1 = float(last_candle[3])
             a_2 = float(now_candle[1])
