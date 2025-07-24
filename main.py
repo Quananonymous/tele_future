@@ -442,7 +442,7 @@ class IndicatorBot:
         self.last_position_check = 0
         self.last_error_log_time = 0
         self.last_close_time = 0
-        self.cooldown_period = 10  # Thời gian chờ sau khi đóng lệnh
+        self.cooldown_period = 60  # Thời gian chờ sau khi đóng lệnh
         self.max_position_attempts = 3  # Số lần thử tối đa
         self.position_attempt_count = 0
         
@@ -503,20 +503,32 @@ class IndicatorBot:
             return None
 
     def get_current_roi(self):
+        def get_current_roi(self):
         if not self.position_open or not self.entry or not self.qty:
-            return 0
-
-        current_price = self.prices[-1] if self.prices else get_current_price(self.symbol)
-
-        if self.side == "BUY":
-            profit = (current_price - self.entry) * self.qty
-        else:
-            profit = (self.entry - current_price) * abs(self.qty)
-
-        invested = self.entry * abs(self.qty) / self.lev
-        roi = (profit / invested) * 100 if invested > 0 else 0
-        return roi
-
+            return
+            
+        try:
+            if len(self.prices) > 0:
+                current_price = self.prices[-1]
+            else:
+                current_price = get_current_price(self.symbol)
+                
+            if current_price <= 0:
+                return
+                
+            # Tính ROI
+            if self.side == "BUY":
+                profit = (current_price - self.entry) * self.qty
+            else:
+                profit = (self.entry - current_price) * abs(self.qty)
+                
+            # Tính % ROI dựa trên vốn ban đầu
+            invested = self.entry * abs(self.qty) / self.lev
+            if invested <= 0:
+                return
+                
+            roi = (profit / invested) * 100
+            return roi
     def get_reverse_signal(self):
         try:
             url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=3m&limit=3"
