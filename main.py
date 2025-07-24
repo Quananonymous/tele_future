@@ -420,6 +420,7 @@ class WebSocketManager:
             self.remove_symbol(symbol)
 
 # ========== BOT CHÍNH VỚI ĐÓNG LỆNH CHÍNH XÁC ==========
+
 class IndicatorBot:
     def __init__(self, symbol, lev, percent, tp, sl, indicator, ws_manager):
         self.symbol = symbol.upper()
@@ -483,8 +484,8 @@ class IndicatorBot:
                 return None
 
             # Lấy nến gần nhất đã đóng (nến trước cuối)
-            now_candle = data[-2]
-            last_candle = data[-3]
+            now_candle = data[-1]
+            last_candle = data[-2]
             a_1 = float(last_candle[2])
             b_1 = float(last_candle[3])
             c_1 = float(last_candle[1])
@@ -493,10 +494,28 @@ class IndicatorBot:
             b_2 = float(now_candle[3])
             c_2 = float(now_candle[1])
             d_2 = float(now_candle[4])
-            if float(last_candle[5]) <= float(now_candle[5]) and abs(a_2 - b_2) > abs(a_1 - b_1) and abs(c_2 - d_2) > abs(c_1 - d_1) and abs(c_2 - d_2) > abs(a_2 - c_2)*5/10 :
-                if abs(b_2 - c_2) > abs(a_2 - d_2) and c_2 < d_2:
+            bien_do_nen_1 = a_1 - b_1
+            than_nen_1 = d_1 - a_1
+            tin_hieu_nen_1 = None
+            if than_nen_1 > 0 :
+                tin_hieu_nen_1 = "BUY"
+
+            if than_nen_1 < 0:
+                tin_hieu_nen_1 = "SELL"
+
+            bien_do_nen_2 = a_2 - b_2
+            than_nen_2 = d_2 - a_2
+            tin_hieu_nen_2 = None
+            if than_nen_2 > 0 :
+                tin_hieu_nen_2 = "BUY"
+
+            if than_nen_2 < 0:
+                tin_hieu_nen_2 = "SELL"
+            
+            if float(last_candle[5]) <= float(now_candle[5]) and abs(than_nen_1) < abs(than_nen_2) and abs(than_nen_2) > 2/3 * abs(bien_do_nen_2):
+                if abs(than_nen_1 < bien_do_nen_1 *2 / 3) and ((tin_hieu_nen_1 == "BUY" and abs(a_1 - d_1) < abs(b_1 - c_1)) or (tin_hieu_nen_1 == "SELL" and abs(a_1 - c_1) < abs(b_1 - d_1))) and d_2 > c_2:
                     return "BUY"
-                elif abs(b_2 - c_2) < abs(a_2 - d_2) and c_2 > d_2:
+                elif abs(than_nen_1 < bien_do_nen_1 *2 / 3) and ((tin_hieu_nen_1 == "BUY" and abs(a_1 - d_1) > abs(b_1 - c_1)) or (tin_hieu_nen_1 == "SELL" and abs(a_1 - c_1) > abs(b_1 - d_1))) and d_2 < c_2:
                     return "SELL"
                 else:
                     return None
@@ -553,13 +572,12 @@ class IndicatorBot:
             b_2 = float(now_candle[3])
             c_2 = float(now_candle[1])
             d_2 = float(now_candle[4])
-            if float(last_candle[5]) <= float(now_candle[5]) and abs(a_2 - b_2) > abs(a_1 - b_1) and abs(c_2 - d_2) > abs(c_1 - d_1):
-                if abs(b_2 - c_2) > abs(a_2 - d_2) and c_2 < d_2:
-                    return "BUY"
-                elif abs(b_2 - c_2) < abs(a_2 - d_2) and c_2 > d_2:
-                    return "SELL"
-                else:
-                    return None
+            if d_1 > c_1:
+                return "BUY"
+            elif d_1 < c_1:
+                return "SELL"
+            else:
+                return None
         except Exception as e:
             self.log(f"Lỗi lấy tín hiệu nến 5p: {str(e)}")
             return None
