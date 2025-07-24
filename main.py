@@ -483,8 +483,8 @@ class IndicatorBot:
                 return None
 
             # Lấy nến gần nhất đã đóng (nến trước cuối)
-            now_candle = data[-1]
-            last_candle = data[-2]
+            now_candle = data[-2]
+            last_candle = data[-3]
             a_1 = float(last_candle[2])
             b_1 = float(last_candle[3])
             c_1 = float(last_candle[1])
