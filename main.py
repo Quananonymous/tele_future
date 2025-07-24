@@ -503,7 +503,6 @@ class IndicatorBot:
             return None
 
     def get_current_roi(self):
-        def get_current_roi(self):
         if not self.position_open or not self.entry or not self.qty:
             return
             
@@ -529,6 +528,7 @@ class IndicatorBot:
                 
             roi = (profit / invested) * 100
             return roi
+        
     def get_reverse_signal(self):
         try:
             url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=3m&limit=3"
