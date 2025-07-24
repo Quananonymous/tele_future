@@ -477,7 +477,7 @@ class IndicatorBot:
                 
     def get_last_candle_signal(self):
         try:
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=5m&limit=3"
+            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=3m&limit=3"
             data = binance_api_request(url)
             if not data or len(data) < 3:
                 return None
@@ -493,7 +493,7 @@ class IndicatorBot:
             b_2 = float(now_candle[3])
             c_2 = float(now_candle[1])
             d_2 = float(now_candle[4])
-            if float(last_candle[5]) <= float(now_candle[5]) and abs(a_2 - b_2) > abs(a_1 - b_1) and abs(c_2 - d_2) > abs(c_1 - d_1) and abs(c_2 - d_2) > abs(a_2 - c_2)*7/10 :
+            if float(last_candle[5]) <= float(now_candle[5]) and abs(a_2 - b_2) > abs(a_1 - b_1) and abs(c_2 - d_2) > abs(c_1 - d_1) and abs(c_2 - d_2) > abs(a_2 - c_2)*5/10 :
                 if abs(b_2 - c_2) > abs(a_2 - d_2) and c_2 < d_2:
                     return "BUY"
                 elif abs(b_2 - c_2) < abs(a_2 - d_2) and c_2 > d_2:
@@ -537,7 +537,7 @@ class IndicatorBot:
         
     def get_reverse_signal(self):
         try:
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=3m&limit=3"
+            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=1m&limit=3"
             data = binance_api_request(url)
             if not data or len(data) < 3:
                 return None
@@ -553,7 +553,7 @@ class IndicatorBot:
             b_2 = float(now_candle[3])
             c_2 = float(now_candle[1])
             d_2 = float(now_candle[4])
-            if float(last_candle[5]) <= float(now_candle[5]) and abs(a_2 - b_2) > abs(a_1 - b_1) and abs(c_2 - d_2) > abs(c_1 - d_1) and abs(c_2 - d_2) > abs(a_2 - c_2)*7/10 :
+            if float(last_candle[5]) <= float(now_candle[5]) and abs(a_2 - b_2) > abs(a_1 - b_1) and abs(c_2 - d_2) > abs(c_1 - d_1):
                 if abs(b_2 - c_2) > abs(a_2 - d_2) and c_2 < d_2:
                     return "BUY"
                 elif abs(b_2 - c_2) < abs(a_2 - d_2) and c_2 > d_2:
