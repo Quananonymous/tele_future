@@ -503,6 +503,8 @@ class IndicatorBot:
             if than_nen_1 < 0:
                 tin_hieu_nen_1 = "SELL"
 
+            gia_trung_binh_1 = (c_1 + d_1)/2
+
             bien_do_nen_2 = a_2 - b_2
             than_nen_2 = d_2 - a_2
             tin_hieu_nen_2 = None
@@ -511,11 +513,13 @@ class IndicatorBot:
 
             if than_nen_2 < 0:
                 tin_hieu_nen_2 = "SELL"
+
+            gia_trung_binh_2 = (c_2 + d_2)/2
             
             if float(last_candle[5]) <= float(now_candle[5]) and abs(than_nen_1) < abs(than_nen_2) and abs(than_nen_2) > 2/3 * abs(bien_do_nen_2):
-                if abs(than_nen_1 < bien_do_nen_1 *2 / 3) and ((tin_hieu_nen_1 == "BUY" and abs(a_1 - d_1) < abs(b_1 - c_1)) or (tin_hieu_nen_1 == "SELL" and abs(a_1 - c_1) < abs(b_1 - d_1))) and d_2 > c_2:
+                if gia_trung_binh_2 > a_1 abs(than_nen_1 < bien_do_nen_1 *1 / 3) and ((tin_hieu_nen_1 == "BUY" and abs(a_1 - d_1) < abs(b_1 - c_1 )) or (tin_hieu_nen_1 == "SELL" and abs(a_1 - c_1) < abs(b_1 - d_1))) and d_2 > c_2:
                     return "BUY"
-                elif abs(than_nen_1 < bien_do_nen_1 *2 / 3) and ((tin_hieu_nen_1 == "BUY" and abs(a_1 - d_1) > abs(b_1 - c_1)) or (tin_hieu_nen_1 == "SELL" and abs(a_1 - c_1) > abs(b_1 - d_1))) and d_2 < c_2:
+                elif gia_trung_binh_2 > b_1 abs(than_nen_1 < bien_do_nen_1 *1 / 3) and ((tin_hieu_nen_1 == "BUY" and abs(a_1 - d_1) > abs(b_1 - c_1)) or (tin_hieu_nen_1 == "SELL" and abs(a_1 - c_1) > abs(b_1 - d_1))) and d_2 < c_2:
                     return "SELL"
                 else:
                     return None
