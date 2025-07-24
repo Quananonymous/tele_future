@@ -543,26 +543,26 @@ class IndicatorBot:
                 return None
 
             # Lấy nến gần nhất đã đóng (nến trước cuối)
-            now_candle = data[-2]
-            last_candle = data[-3]
+            now_candle = data[-1]
+            last_candle = data[-2]
             a_1 = float(last_candle[2])
             b_1 = float(last_candle[3])
-            a_2 = float(now_candle[1])
-            b_2 = float(now_candle[4])
-            
-            if b_2 > a_2:
-                return "BUY"
-            elif a_2 > b_2:
-                return "SELL"
-            else:
-                return None
+            c_1 = float(last_candle[1])
+            d_1 = float(last_candle[4])
+            a_2 = float(now_candle[2])
+            b_2 = float(now_candle[3])
+            c_2 = float(now_candle[1])
+            d_2 = float(now_candle[4])
+            if float(last_candle[5]) <= float(now_candle[5]) and abs(a_2 - b_2) > abs(a_1 - b_1) and abs(c_2 - d_2) > abs(c_1 - d_1) and abs(c_2 - d_2) > abs(a_2 - c_2)*7/10 :
+                if abs(b_2 - c_2) > abs(a_2 - d_2) and c_2 < d_2:
+                    return "BUY"
+                elif abs(b_2 - c_2) < abs(a_2 - d_2) and c_2 > d_2:
+                    return "SELL"
+                else:
+                    return None
         except Exception as e:
             self.log(f"Lỗi lấy tín hiệu nến 5p: {str(e)}")
             return None
-
-
-
-
     def _run(self):
         """Luồng chính quản lý bot với kiểm soát lỗi chặt chẽ"""
         while not self._stop:
