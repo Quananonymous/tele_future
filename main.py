@@ -1,3 +1,5 @@
+
+
 import json
 import hmac
 import hashlib
@@ -547,7 +549,7 @@ class IndicatorBot:
             b_1 = float(last_candle[3])
             a_2 = float(now_candle[1])
             b_2 = float(now_candle[4])
-            if 
+            
             if b_2 > a_2:
                 return "BUY"
             elif a_2 > b_2:
