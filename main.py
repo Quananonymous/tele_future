@@ -481,8 +481,8 @@ class IndicatorBot:
                 return None
 
             # Lấy nến gần nhất đã đóng (nến trước cuối)
-            now_candle = data[-2]
-            last_candle = data[-3]
+            now_candle = data[-1]
+            last_candle = data[-2]
             a_1 = float(last_candle[2])
             b_1 = float(last_candle[3])
             c_1 = float(last_candle[1])
@@ -547,6 +547,7 @@ class IndicatorBot:
             b_1 = float(last_candle[3])
             a_2 = float(now_candle[1])
             b_2 = float(now_candle[4])
+            if 
             if b_2 > a_2:
                 return "BUY"
             elif a_2 > b_2:
