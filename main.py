@@ -493,10 +493,10 @@ class IndicatorBot:
             b_2 = float(now_candle[3])
             c_2 = float(now_candle[1])
             d_2 = float(now_candle[4])
-            if float(last_candle[5]) <= float(now_candle[5]) and abs(a_2 - b_2) > abs(a_1 - b_1) and abs(c_2 - d_2) > abs(c_1 - d_1):
-                if (c_1 + d_1)/2 < c_2 and c_2 < d_2:
+            if float(last_candle[5]) <= float(now_candle[5]) and abs(a_2 - b_2) > abs(a_1 - b_1) and abs(c_2 - d_2) > abs(c_1 - d_1) and abs(c_2 - d_2) > abs(a_2 - c_2)*7/10 :
+                if abs(b_2 - c_2) > abs(a_2 - d_2) and c_2 < d_2:
                     return "BUY"
-                elif (c_1 + d_1)/2 > c_2 and c_2 > d_2:
+                elif abs(b_2 - c_2) < abs(a_2 - d_2) and c_2 > d_2:
                     return "SELL"
                 else:
                     return None
