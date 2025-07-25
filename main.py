@@ -718,7 +718,7 @@ class IndicatorBot:
         try:
             url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=5m&limit=2"
             data = binance_api_request(url)
-            if not data or len(data) < 3:
+            if not data or len(data) < 2:
                 return None
 
             # Lấy nến gần nhất đã đóng (nến trước cuối)
