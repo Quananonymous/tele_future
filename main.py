@@ -423,12 +423,49 @@ class WebSocketManager:
 # === CLASS CANDLE (đặt ở đây) ===
 class Candle:
     def __init__(self, timestamp, open_price, high_price, low_price, close_price, volume):
-        self.timestamp = timestamp
+        self.timestamp = int(timestamp)
         self.open = float(open_price)
         self.high = float(high_price)
         self.low = float(low_price)
         self.close = float(close_price)
         self.volume = float(volume)
+
+    # ... (các phương thức khác giữ nguyên) ...
+
+    @classmethod
+    def from_binance(cls, kline):
+        """
+        Tạo Candle từ 1 cây nến của Binance (list 12 phần tử).
+        Cấu trúc chuẩn của Binance:
+        [
+            1499040000000,      # 0: Open time
+            "0.01634790",       # 1: Open
+            "0.80000000",       # 2: High
+            "0.01575800",       # 3: Low
+            "0.01577100",       # 4: Close
+            "148976.11427815",  # 5: Volume
+            1499644799999,      # 6: Close time
+            "2434.19055334",    # 7: Quote asset volume
+            308,                # 8: Number of trades
+            "1756.87402397",    # 9: Taker buy base asset volume
+            "28.46694368",      # 10: Taker buy quote asset volume
+            "17928899.62484339" # 11: Ignore
+        ]
+        """
+        if not isinstance(kline, list) or len(kline) < 6:
+            raise ValueError(f"❌ Dữ liệu nến không hợp lệ: {kline}")
+
+        try:
+            return cls(
+                timestamp=kline[0],  # Open time
+                open_price=kline[1],
+                high_price=kline[2],
+                low_price=kline[3],
+                close_price=kline[4],
+                volume=kline[5]
+            )
+        except (TypeError, ValueError, IndexError) as e:
+            raise ValueError(f"❌ Lỗi khi tạo Candle từ dữ liệu: {kline} → {str(e)}")
 
     def body_size(self):
         return self.close - self.open
@@ -469,37 +506,6 @@ class Candle:
             return "DOWN"
         else:
             return "BALANCED"
-
-    
-    
-    def from_binance(cls, kline):
-        """
-        Tạo Candle từ 1 cây nến của Binance (list 12 phần tử).
-        Ví dụ:
-       [
-            1234567890000,      # 0: timestamp
-           "0.12345",          # 1: open
-           "0.12567",          # 2: high
-           "0.12222",          # 3: low
-           "0.12456",          # 4: close
-           "123.456",          # 5: volume
-        ...                 # các trường khác không cần thiết
-       ]
-        """
-        if not isinstance(kline, list) or len(kline) < 6:
-            raise ValueError(f"❌ Dữ liệu nến không hợp lệ: {kline}")
-
-        try:
-           return cls(
-               open=float(kline[1]),
-               high=float(kline[2]),
-               low=float(kline[3]),
-               close=float(kline[4]),
-               volume=float(kline[5]),
-               timestamp=int(kline[0])
-            )
-        except Exception as e:
-            raise ValueError(f"❌ Lỗi khi tạo Candle từ dữ liệu: {kline} → {e}")
     
 
     def __str__(self):
