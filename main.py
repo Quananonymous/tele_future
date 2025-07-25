@@ -831,9 +831,6 @@ class IndicatorBot:
         elif roi <= -self.sl:
             self.close_position(f"🛑 Chạm SL {roi:.2f}%")
 
-    def get_signal(self):
-        return self.get_signal(self, retry=0, max_retry=20)
-
     def open_position(self, side):
         # Kiểm tra lại trạng thái trước khi vào lệnh
         self.check_position_status()
