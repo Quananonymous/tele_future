@@ -563,9 +563,9 @@ class IndicatorBot:
                 return None
 
             # Lấy nến gần nhất đã đóng (nến trước cuối)
-            now_candle = Candle.from_binance(data[-2])
-            candle_1 = Candle.from_binance(data[-3])
-            candle_2 = Candle.from_binance(data[-4])
+            now_candle = Candle.from_binance(data[-1])
+            candle_1 = Candle.from_binance(data[-2])
+            candle_2 = Candle.from_binance(data[-3])
             rsi_signal = self.get_rsi_signal()
             
             if not now_candle or not candle_1 or not candle_2:
