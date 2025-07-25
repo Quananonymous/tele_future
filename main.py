@@ -418,6 +418,71 @@ class WebSocketManager:
         self._stop_event.set()
         for symbol in list(self.connections.keys()):
             self.remove_symbol(symbol)
+            
+
+# === CLASS CANDLE (đặt ở đây) ===
+class Candle:
+    def __init__(self, timestamp, open_price, high_price, low_price, close_price, volume):
+        self.timestamp = timestamp
+        self.open = float(open_price)
+        self.high = float(high_price)
+        self.low = float(low_price)
+        self.close = float(close_price)
+        self.volume = float(volume)
+
+    def body_size(self):
+        return self.close - self.open
+
+    def candle_range(self):
+        return self.high - self.low
+
+    def direction(self):
+        if self.close > self.open:
+            return "BUY"
+        elif self.close < self.open:
+            return "SELL"
+        return "DOJI"
+
+    def average_price(self):
+        return (self.open + self.close) / 2
+    
+    def upper_wick(self):
+        return self.high - max(self.open, self.close)
+
+    def lower_wick(self):
+        return min(self.open, self.close) - self.low
+    
+    def direction(self):
+        if self.close > self.open:
+            return "BUY"
+        elif self.close < self.open:
+            return "SELL"
+        
+    def wick_direction(self):
+        """Xác định hướng chân nến: 'UP', 'DOWN', 'BALANCED'"""
+        upper = self.upper_wick()
+        lower = self.lower_wick()
+
+        if upper > lower * 1.5:
+            return "UP"
+        elif lower > upper * 1.5:
+            return "DOWN"
+        else:
+            return "BALANCED"
+
+    
+    def from_binance(cls, raw):
+        return cls(
+            timestamp=raw[0],
+            open_price=raw[1],
+            high_price=raw[2],
+            low_price=raw[3],
+            close_price=raw[4],
+            volume=raw[5]
+        )
+
+    def __str__(self):
+        return f"[{self.timestamp}] O:{self.open} H:{self.high} L:{self.low} C:{self.close} V:{self.volume}"
 
 # ========== BOT CHÍNH VỚI ĐÓNG LỆNH CHÍNH XÁC ==========
 
@@ -476,6 +541,20 @@ class IndicatorBot:
             if len(self.rsi_history) > 15:
                 self.rsi_history = self.rsi_history[-15:]
                 
+    def get_rsi_signal(self):
+        if len(self.rsi_history) < 1:
+            return None
+
+        rsi = self.rsi_history[-1]
+
+        if rsi > 80:
+            return "NO_BUY"
+        elif rsi < 20:
+            return "NO_SELL"
+        else:
+            return None
+
+                
     def get_last_candle_signal(self):
         try:
             url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=3m&limit=3"
@@ -484,45 +563,31 @@ class IndicatorBot:
                 return None
 
             # Lấy nến gần nhất đã đóng (nến trước cuối)
-            now_candle = data[-1]
-            last_candle = data[-2]
-            a_1 = float(last_candle[2])
-            b_1 = float(last_candle[3])
-            c_1 = float(last_candle[1])
-            d_1 = float(last_candle[4])
-            a_2 = float(now_candle[2])
-            b_2 = float(now_candle[3])
-            c_2 = float(now_candle[1])
-            d_2 = float(now_candle[4])
-            bien_do_nen_1 = a_1 - b_1
-            than_nen_1 = d_1 - a_1
-            tin_hieu_nen_1 = None
-            if than_nen_1 > 0 :
-                tin_hieu_nen_1 = "BUY"
-
-            if than_nen_1 < 0:
-                tin_hieu_nen_1 = "SELL"
-
-            gia_trung_binh_1 = (c_1 + d_1)/2
-
-            bien_do_nen_2 = a_2 - b_2
-            than_nen_2 = d_2 - a_2
-            tin_hieu_nen_2 = None
-            if than_nen_2 > 0 :
-                tin_hieu_nen_2 = "BUY"
-
-            if than_nen_2 < 0:
-                tin_hieu_nen_2 = "SELL"
-
-            gia_trung_binh_2 = (c_2 + d_2)/2
+            now_candle = Candle.from_binance(data[-1])
+            candle_1 = Candle.from_binance(data[-2])
+            candle_2 = Candle.from_binance(data[-3])
+            rsi_signal = self.get_rsi_signal()
             
-            if float(last_candle[5]) <= float(now_candle[5]) and abs(than_nen_1) < abs(than_nen_2) and abs(than_nen_2) > 2/3 * abs(bien_do_nen_2):
-                if gia_trung_binh_2 > a_1 and abs(than_nen_1 < bien_do_nen_1 *1 / 3) and ((tin_hieu_nen_1 == "BUY" and abs(a_1 - d_1) < abs(b_1 - c_1 )) or (tin_hieu_nen_1 == "SELL" and abs(a_1 - c_1) < abs(b_1 - d_1))) and d_2 > c_2:
-                    return "BUY"
-                elif gia_trung_binh_2 > b_1 and abs(than_nen_1 < bien_do_nen_1 *1 / 3) and ((tin_hieu_nen_1 == "BUY" and abs(a_1 - d_1) > abs(b_1 - c_1)) or (tin_hieu_nen_1 == "SELL" and abs(a_1 - c_1) > abs(b_1 - d_1))) and d_2 < c_2:
-                    return "SELL"
-                else:
-                    return None
+            if not now_candle or not candle_1 or not candle_2:
+                return None
+            if now_candle.volume > candle_1.volume and now_candle.volume > candle_2.volume:
+                if abs(candle_1.average_price() - candle_2.average_price()) < abs(now_candle.average_price() - candle_1.average_price()) and candle_1.wick_direction() == candle_2.wick_direction():
+                    if candle_1.body_size() < candle_2.body_size():
+                        if candle_1.wick_direction() == "UP" and now_candle.wick_direction() == "UP" and now_candle.direction() == "SELL" and rsi_signal != "NO_SELL":
+                            return "SELL"
+                        elif candle_1.wick_direction() == "DOWN" and now_candle.wick_direction() == "DOWN" and now_candle.direction() == "BUY" and rsi_signal != "NO_BUY":
+                            return "BUY"
+                        else:
+                            return None
+                    elif candle_1.body_size() > candle_2.body_size():
+                        if candle_1.wick_direction() == "UP" and now_candle.wick_direction() == "UP" and now_candle.direction() == "BUY" and rsi_signal != "NO_BUY":
+                            return "BUY"
+                        elif candle_1.wick_direction() == "DOWN" and now_candle.wick_direction() == "DOWN" and now_candle.direction() == "SELL" and rsi_signal != "NO_SELL":
+                            return "SELL"
+                        else:
+                            return None
+                            
+            return None                    
         except Exception as e:
             self.log(f"Lỗi lấy tín hiệu nến 5p: {str(e)}")
             return None
@@ -566,25 +631,35 @@ class IndicatorBot:
                 return None
 
             # Lấy nến gần nhất đã đóng (nến trước cuối)
-            now_candle = data[-1]
-            last_candle = data[-2]
-            a_1 = float(last_candle[2])
-            b_1 = float(last_candle[3])
-            c_1 = float(last_candle[1])
-            d_1 = float(last_candle[4])
-            a_2 = float(now_candle[2])
-            b_2 = float(now_candle[3])
-            c_2 = float(now_candle[1])
-            d_2 = float(now_candle[4])
-            if d_1 > c_1:
-                return "BUY"
-            elif d_1 < c_1:
-                return "SELL"
-            else:
+            now_candle = Candle.from_binance(data[-1])
+            candle_1 = Candle.from_binance(data[-2])
+            candle_2 = Candle.from_binance(data[-3])
+            rsi_signal = self.get_rsi_signal()
+            
+            if not now_candle or not candle_1 or not candle_2:
                 return None
+            if now_candle.volume > candle_1.volume and now_candle.volume > candle_2.volume:
+                if abs(candle_1.average_price() - candle_2.average_price()) < abs(now_candle.average_price() - candle_1.average_price()) and candle_1.wick_direction() == candle_2.wick_direction():
+                    if candle_1.body_size() < candle_2.body_size():
+                        if candle_1.wick_direction() == "UP" and now_candle.wick_direction() == "UP" and now_candle.direction() == "SELL" and rsi_signal != "NO_SELL":
+                            return "SELL"
+                        elif candle_1.wick_direction() == "DOWN" and now_candle.wick_direction() == "DOWN" and now_candle.direction() == "BUY" and rsi_signal != "NO_BUY":
+                            return "BUY"
+                        else:
+                            return None
+                    elif candle_1.body_size() > candle_2.body_size():
+                        if candle_1.wick_direction() == "UP" and now_candle.wick_direction() == "UP" and now_candle.direction() == "BUY" and rsi_signal != "NO_BUY":
+                            return "BUY"
+                        elif candle_1.wick_direction() == "DOWN" and now_candle.wick_direction() == "DOWN" and now_candle.direction() == "SELL" and rsi_signal != "NO_SELL":
+                            return "SELL"
+                        else:
+                            return None
+                            
+            return None                    
         except Exception as e:
             self.log(f"Lỗi lấy tín hiệu nến 5p: {str(e)}")
             return None
+
     def _run(self):
         """Luồng chính quản lý bot với kiểm soát lỗi chặt chẽ"""
         while not self._stop:
