@@ -557,7 +557,7 @@ class IndicatorBot:
                 
     def get_last_candle_signal(self):
         try:
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=3m&limit=3"
+            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=3m&limit=4"
             data = binance_api_request(url)
             if not data or len(data) < 3:
                 return None
@@ -625,7 +625,7 @@ class IndicatorBot:
         
     def get_reverse_signal(self):
         try:
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=1m&limit=3"
+            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=1m&limit=4"
             data = binance_api_request(url)
             if not data or len(data) < 3:
                 return None
