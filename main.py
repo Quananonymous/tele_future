@@ -660,9 +660,9 @@ class IndicatorBot:
             else:
                 sell_score += 1
     
-            if rsi_1 < 80 and rsi_2 < rsi_1:
+            if rsi_1 < 70 and rsi_2 < rsi_1:
                 buy_score += 1
-            if rsi_1 > 20 and rsi_2 > rsi_1:
+            if rsi_1 > 30 and rsi_2 > rsi_1:
                 sell_score += 1
     
             if ema_signal == "BUY":
