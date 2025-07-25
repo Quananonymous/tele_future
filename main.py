@@ -471,15 +471,36 @@ class Candle:
             return "BALANCED"
 
     
-    def from_binance(cls, raw):
-        return cls(
-            timestamp=raw[0],
-            open_price=raw[1],
-            high_price=raw[2],
-            low_price=raw[3],
-            close_price=raw[4],
-            volume=raw[5]
-        )
+    
+    def from_binance(cls, kline):
+        """
+        Tạo Candle từ 1 cây nến của Binance (list 12 phần tử).
+        Ví dụ:
+       [
+            1234567890000,      # 0: timestamp
+           "0.12345",          # 1: open
+           "0.12567",          # 2: high
+           "0.12222",          # 3: low
+           "0.12456",          # 4: close
+           "123.456",          # 5: volume
+        ...                 # các trường khác không cần thiết
+       ]
+        """
+        if not isinstance(kline, list) or len(kline) < 6:
+            raise ValueError(f"❌ Dữ liệu nến không hợp lệ: {kline}")
+
+        try:
+           return cls(
+               open=float(kline[1]),
+               high=float(kline[2]),
+               low=float(kline[3]),
+               close=float(kline[4]),
+               volume=float(kline[5]),
+               timestamp=int(kline[0])
+            )
+       except Exception as e:
+            raise ValueError(f"❌ Lỗi khi tạo Candle từ dữ liệu: {kline} → {e}")
+    
 
     def __str__(self):
         return f"[{self.timestamp}] O:{self.open} H:{self.high} L:{self.low} C:{self.close} V:{self.volume}"
