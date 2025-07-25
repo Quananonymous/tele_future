@@ -567,57 +567,121 @@ class IndicatorBot:
             self.rsi_history.append(rsi)
             if len(self.rsi_history) > 15:
                 self.rsi_history = self.rsi_history[-15:]
-                
-    def get_rsi_signal(self):
-        if len(self.rsi_history) < 1:
+
+    def get_ema_crossover_signal(self, prices, short_period=9, long_period=21):
+        if len(prices) < long_period:
             return None
-
-        rsi = self.rsi_history[-1]
-
-        if rsi > 80:
-            return "NO_BUY"
-        elif rsi < 20:
-            return "NO_SELL"
+    
+        def ema(values, period):
+            k = 2 / (period + 1)
+            ema_val = values[0]
+            for price in values[1:]:
+                ema_val = price * k + ema_val * (1 - k)
+            return ema_val
+    
+        short_ema = ema(prices[-long_period:], short_period)
+        long_ema = ema(prices[-long_period:], long_period)
+    
+        if short_ema > long_ema:
+            return "BUY"
+        elif short_ema < long_ema:
+            return "SELL"
         else:
             return None
 
                 
-    def get_last_candle_signal(self):
+    def get_signal(self, retry=0, max_retry=20):
         try:
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=3m&limit=4"
+            # Kiểm tra RSI đủ
+            if len(self.rsi_history) < 3:
+                return None
+    
+            rsi_1 = self.rsi_history[-1]
+            rsi_2 = self.rsi_history[-2]
+    
+            # Lấy dữ liệu nến
+            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=3m&limit=50"
             data = binance_api_request(url)
-            if not data or len(data) < 3:
+            if not data or len(data) < 4:
                 return None
-
-            # Lấy nến gần nhất đã đóng (nến trước cuối)
-            now_candle = Candle.from_binance(data[-1])
-            candle_1 = Candle.from_binance(data[-2])
-            candle_2 = Candle.from_binance(data[-3])
-            rsi_signal = self.get_rsi_signal()
-            
-            if not now_candle or not candle_1 or not candle_2:
+    
+            # Tạo nến
+            candle3 = Candle.from_binance(data[-4])
+            candle2 = Candle.from_binance(data[-3])
+            last = Candle.from_binance(data[-2])
+            now = Candle.from_binance(data[-1])
+    
+            # Lấy giá đóng cửa cho EMA
+            prices = [float(c[4]) for c in data]
+    
+            # Lấy tín hiệu EMA crossover
+            ema_signal = self.get_ema_crossover_signal(prices)
+    
+            # Điều kiện bắt buộc
+            if now.body_size() <= last.body_size():
+                if retry < max_retry:
+                    time.sleep(1)
+                    return self.get_signal(retry + 1, max_retry)
+                else:
+                    return None
+    
+            if now.volume <= last.volume:
+                if retry < max_retry:
+                    time.sleep(1)
+                    return self.get_signal(retry + 1, max_retry)
+                else:
+                    return None
+    
+            kc_1_2 = abs(last.average_price() - candle2.average_price())
+            kc_2_3 = abs(candle2.average_price() - candle3.average_price())
+            if kc_2_3 >= kc_1_2:
+                if retry < max_retry:
+                    time.sleep(1)
+                    return self.get_signal(retry + 1, max_retry)
+                else:
+                    return None
+    
+            # Tính điểm
+            buy_score = 0
+            sell_score = 0
+    
+            if now.wick_bottom() > now.wick_top():
+                buy_score += 1
+            elif now.wick_top() > now.wick_bottom():
+                sell_score += 1
+    
+            if now.direction() == "BUY":
+                buy_score += 1
+            elif now.direction() == "SELL":
+                sell_score += 1
+    
+            if now.close > last.open:
+                buy_score += 1
+            else:
+                sell_score += 1
+    
+            if rsi_1 < 80 and rsi_2 < rsi_1:
+                buy_score += 1
+            if rsi_1 > 20 and rsi_2 > rsi_1:
+                sell_score += 1
+    
+            if ema_signal == "BUY":
+                buy_score += 1
+            elif ema_signal == "SELL":
+                sell_score += 1
+    
+            # Trả kết quả
+            if buy_score > sell_score:
+                return "BUY"
+            elif sell_score > buy_score:
+                return "SELL"
+            else:
                 return None
-            if now_candle.volume > candle_1.volume and now_candle.volume > candle_2.volume:
-                if abs(candle_1.average_price() - candle_2.average_price()) < abs(now_candle.average_price() - candle_1.average_price()) and candle_1.wick_direction() == candle_2.wick_direction():
-                    if candle_1.body_size() < candle_2.body_size():
-                        if candle_1.wick_direction() == "UP" and now_candle.wick_direction() == "UP" and now_candle.direction() == "SELL" and rsi_signal != "NO_SELL":
-                            return "SELL"
-                        elif candle_1.wick_direction() == "DOWN" and now_candle.wick_direction() == "DOWN" and now_candle.direction() == "BUY" and rsi_signal != "NO_BUY":
-                            return "BUY"
-                        else:
-                            return None
-                    elif candle_1.body_size() > candle_2.body_size():
-                        if candle_1.wick_direction() == "UP" and now_candle.wick_direction() == "UP" and now_candle.direction() == "BUY" and rsi_signal != "NO_BUY":
-                            return "BUY"
-                        elif candle_1.wick_direction() == "DOWN" and now_candle.wick_direction() == "DOWN" and now_candle.direction() == "SELL" and rsi_signal != "NO_SELL":
-                            return "SELL"
-                        else:
-                            return None
-                            
-            return None                    
+    
         except Exception as e:
-            self.log(f"Lỗi lấy tín hiệu nến 5p: {str(e)}")
+            self.log(f"Lỗi tín hiệu: {str(e)}")
             return None
+    
 
     def get_current_roi(self):
         if not self.position_open or not self.entry or not self.qty:
@@ -652,37 +716,15 @@ class IndicatorBot:
         
     def get_reverse_signal(self):
         try:
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=1m&limit=4"
+            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=5m&limit=2"
             data = binance_api_request(url)
             if not data or len(data) < 3:
                 return None
 
             # Lấy nến gần nhất đã đóng (nến trước cuối)
             now_candle = Candle.from_binance(data[-1])
-            candle_1 = Candle.from_binance(data[-2])
-            candle_2 = Candle.from_binance(data[-3])
-            rsi_signal = self.get_rsi_signal()
+            return now_candle.direction()
             
-            if not now_candle or not candle_1 or not candle_2:
-                return None
-            if now_candle.volume > candle_1.volume and now_candle.volume > candle_2.volume:
-                if abs(candle_1.average_price() - candle_2.average_price()) < abs(now_candle.average_price() - candle_1.average_price()) and candle_1.wick_direction() == candle_2.wick_direction():
-                    if candle_1.body_size() < candle_2.body_size():
-                        if candle_1.wick_direction() == "UP" and now_candle.wick_direction() == "UP" and now_candle.direction() == "SELL" and rsi_signal != "NO_SELL":
-                            return "SELL"
-                        elif candle_1.wick_direction() == "DOWN" and now_candle.wick_direction() == "DOWN" and now_candle.direction() == "BUY" and rsi_signal != "NO_BUY":
-                            return "BUY"
-                        else:
-                            return None
-                    elif candle_1.body_size() > candle_2.body_size():
-                        if candle_1.wick_direction() == "UP" and now_candle.wick_direction() == "UP" and now_candle.direction() == "BUY" and rsi_signal != "NO_BUY":
-                            return "BUY"
-                        elif candle_1.wick_direction() == "DOWN" and now_candle.wick_direction() == "DOWN" and now_candle.direction() == "SELL" and rsi_signal != "NO_SELL":
-                            return "SELL"
-                        else:
-                            return None
-                            
-            return None                    
         except Exception as e:
             self.log(f"Lỗi lấy tín hiệu nến 5p: {str(e)}")
             return None
