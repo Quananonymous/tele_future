@@ -645,9 +645,9 @@ class IndicatorBot:
             buy_score = 0
             sell_score = 0
     
-            if now.wick_bottom() > now.wick_top():
+            if last.wick_direction() == "DOWN":
                 buy_score += 1
-            elif now.wick_top() > now.wick_bottom():
+            elif last.wick_direction() == "UP":
                 sell_score += 1
     
             if now.direction() == "BUY":
