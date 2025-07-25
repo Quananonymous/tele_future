@@ -498,7 +498,7 @@ class Candle:
                volume=float(kline[5]),
                timestamp=int(kline[0])
             )
-       except Exception as e:
+        except Exception as e:
             raise ValueError(f"❌ Lỗi khi tạo Candle từ dữ liệu: {kline} → {e}")
     
 
