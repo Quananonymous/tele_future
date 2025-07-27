@@ -628,11 +628,11 @@ class IndicatorBot:
                 
     def get_signal(self, retry=0, max_retry=20):
         try:
-            adx = self.calc_adx(data[-20:])
+            adx = calc_adx(data[-20:])
             if adx < 20:
                 return None
             
-            boll = self.calc_bollinger_bands(prices)
+            boll = calc_bollinger_bands(prices)
             if boll:
                 if now.close > boll['upper']:
                     buy_score += 1
