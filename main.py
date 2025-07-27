@@ -510,6 +510,42 @@ class Candle:
 
     def __str__(self):
         return f"[{self.timestamp}] O:{self.open} H:{self.high} L:{self.low} C:{self.close} V:{self.volume}"
+    
+    def calc_adx(data, period=14):
+        try:
+            highs = np.array([float(c[2]) for c in data])
+            lows = np.array([float(c[3]) for c in data])
+            closes = np.array([float(c[4]) for c in data])
+
+            plus_dm = highs[1:] - highs[:-1]
+            minus_dm = lows[:-1] - lows[1:]
+            plus_dm = np.where((plus_dm > minus_dm) & (plus_dm > 0), plus_dm, 0)
+            minus_dm = np.where((minus_dm > plus_dm) & (minus_dm > 0), minus_dm, 0)
+
+            tr = np.maximum(highs[1:], closes[:-1]) - np.minimum(lows[1:], closes[:-1])
+            atr = np.mean(tr[-period:])
+
+            plus_di = 100 * np.mean(plus_dm[-period:]) / atr
+            minus_di = 100 * np.mean(minus_dm[-period:]) / atr
+
+            dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
+            return dx
+        except:
+            return 0
+        
+    def calc_bollinger_bands(prices, period=20, std_dev=2):
+        if len(prices) < period:
+            return None
+        prices = np.array(prices[-period:])
+        sma = np.mean(prices)
+        std = np.std(prices)
+        return {
+            'upper': sma + std_dev * std,
+            'lower': sma - std_dev * std,
+            'mid': sma
+        }
+
+
 
 # ========== BOT CHÍNH VỚI ĐÓNG LỆNH CHÍNH XÁC ==========
 
@@ -592,6 +628,18 @@ class IndicatorBot:
                 
     def get_signal(self, retry=0, max_retry=20):
         try:
+            adx = calc_adx(data[-20:])
+            if adx < 20:
+                return None
+            
+            boll = calc_bollinger_bands(prices)
+            if boll:
+                if now.close > boll['upper']:
+                    buy_score += 1
+                elif now.close < boll['lower']:
+                    sell_score += 1
+
+
             # Kiểm tra RSI đủ
             if len(self.rsi_history) < 3:
                 return None
@@ -600,7 +648,7 @@ class IndicatorBot:
             rsi_2 = self.rsi_history[-2]
     
             # Lấy dữ liệu nến
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=3m&limit=50"
+            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=3m&limit=25"
             data = binance_api_request(url)
             if not data or len(data) < 4:
                 return None
@@ -618,28 +666,16 @@ class IndicatorBot:
             ema_signal = self.get_ema_crossover_signal(prices)
     
             # Điều kiện bắt buộc
-            if now.body_size() <= last.body_size():
-                if retry < max_retry:
-                    time.sleep(1)
-                    return self.get_signal(retry + 1, max_retry)
-                else:
-                    return None
+            if now.body_size() <= last.body_size() :
+                return None
     
             if now.volume <= last.volume:
-                if retry < max_retry:
-                    time.sleep(1)
-                    return self.get_signal(retry + 1, max_retry)
-                else:
-                    return None
+                return None
     
-            kc_1_2 = abs(last.average_price() - candle2.average_price())
-            kc_2_3 = abs(candle2.average_price() - candle3.average_price())
-            if kc_2_3 >= kc_1_2:
-                if retry < max_retry:
-                    time.sleep(1)
-                    return self.get_signal(retry + 1, max_retry)
-                else:
-                    return None
+            kc_1 = abs(now.average_price() - last.average_price())
+            kc_2 = abs(last.average_price() - candle2.average_price())
+            if kc_1 >= kc_2:
+                return None
     
             # Tính điểm
             buy_score = 0
@@ -671,9 +707,9 @@ class IndicatorBot:
                 sell_score += 1
     
             # Trả kết quả
-            if buy_score > sell_score:
+            if buy_score > sell_score + 1:
                 return "BUY"
-            elif sell_score > buy_score:
+            elif sell_score > buy_score + 1:
                 return "SELL"
             else:
                 return None
@@ -693,7 +729,7 @@ class IndicatorBot:
             else:
                 current_price = get_current_price(self.symbol)
                 
-            if current_price <= 0:
+            if current_price < 0:
                 return
                 
             # Tính ROI
@@ -704,7 +740,7 @@ class IndicatorBot:
                 
             # Tính % ROI dựa trên vốn ban đầu
             invested = self.entry * abs(self.qty) / self.lev
-            if invested <= 0:
+            if invested < 0:
                 return
                 
             roi = (profit / invested) * 100
