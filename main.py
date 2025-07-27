@@ -511,39 +511,39 @@ class Candle:
     def __str__(self):
         return f"[{self.timestamp}] O:{self.open} H:{self.high} L:{self.low} C:{self.close} V:{self.volume}"
     
-    def calc_adx(data, period=14):
-        try:
-            highs = np.array([float(c[2]) for c in data])
-            lows = np.array([float(c[3]) for c in data])
-            closes = np.array([float(c[4]) for c in data])
+def calc_adx(data, period=14):
+    try:
+        highs = np.array([float(c[2]) for c in data])
+        lows = np.array([float(c[3]) for c in data])
+        closes = np.array([float(c[4]) for c in data])
 
-            plus_dm = highs[1:] - highs[:-1]
-            minus_dm = lows[:-1] - lows[1:]
-            plus_dm = np.where((plus_dm > minus_dm) & (plus_dm > 0), plus_dm, 0)
-            minus_dm = np.where((minus_dm > plus_dm) & (minus_dm > 0), minus_dm, 0)
+        plus_dm = highs[1:] - highs[:-1]
+        minus_dm = lows[:-1] - lows[1:]
+        plus_dm = np.where((plus_dm > minus_dm) & (plus_dm > 0), plus_dm, 0)
+        minus_dm = np.where((minus_dm > plus_dm) & (minus_dm > 0), minus_dm, 0)
 
-            tr = np.maximum(highs[1:], closes[:-1]) - np.minimum(lows[1:], closes[:-1])
-            atr = np.mean(tr[-period:])
+        tr = np.maximum(highs[1:], closes[:-1]) - np.minimum(lows[1:], closes[:-1])
+        atr = np.mean(tr[-period:])
 
-            plus_di = 100 * np.mean(plus_dm[-period:]) / atr
-            minus_di = 100 * np.mean(minus_dm[-period:]) / atr
+        plus_di = 100 * np.mean(plus_dm[-period:]) / atr
+        minus_di = 100 * np.mean(minus_dm[-period:]) / atr
 
-            dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
-            return dx
-        except:
-            return 0
-        
-    def calc_bollinger_bands(prices, period=20, std_dev=2):
-        if len(prices) < period:
-            return None
-        prices = np.array(prices[-period:])
-        sma = np.mean(prices)
-        std = np.std(prices)
-        return {
-            'upper': sma + std_dev * std,
-            'lower': sma - std_dev * std,
-            'mid': sma
-        }
+        dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
+        return dx
+    except:
+        return 0
+    
+def calc_bollinger_bands(prices, period=20, std_dev=2):
+    if len(prices) < period:
+        return None
+    prices = np.array(prices[-period:])
+    sma = np.mean(prices)
+    std = np.std(prices)
+    return {
+        'upper': sma + std_dev * std,
+        'lower': sma - std_dev * std,
+        'mid': sma
+    }
 
 
 
