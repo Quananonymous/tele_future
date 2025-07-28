@@ -669,8 +669,8 @@ class IndicatorBot:
             rsi = calc_rsi(closes)
             
             # Kiểm tra điều kiện thị trường
-            if adx < 20 or not boll:
-                return None
+            #if adx < 20 or not boll:
+                #return None
                 
             # Tạo nến
             try:
