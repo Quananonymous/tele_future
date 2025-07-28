@@ -680,7 +680,7 @@ class IndicatorBot:
 
     def get_current_roi(self):
         if not self.position_open or not self.entry or not self.qty:
-            return
+            return 0.1
             
         try:
             if len(self.prices) > 0:
@@ -689,7 +689,7 @@ class IndicatorBot:
                 current_price = get_current_price(self.symbol)
                 
             if current_price < 0:
-                return
+                return 0.1
                 
             # Tính ROI
             if self.side == "BUY":
@@ -700,7 +700,7 @@ class IndicatorBot:
             # Tính % ROI dựa trên vốn ban đầu
             invested = self.entry * abs(self.qty) / self.lev
             if invested < 0:
-                return
+                return 0.1
                 
             roi = (profit / invested) * 100
             return roi
@@ -714,7 +714,7 @@ class IndicatorBot:
             url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=5m&limit=2"
             data = binance_api_request(url)
             if not data or len(data) < 2:
-                return "BUY"  # Mặc định trả về BUY
+                return # Mặc định trả về BUY
             
             # Lấy nến gần nhất đã đóng (nến trước cuối)
             now_candle = Candle.from_binance(data[-1])
@@ -722,7 +722,7 @@ class IndicatorBot:
             
         except Exception as e:
             self.log(f"Lỗi lấy tín hiệu nến 5p: {str(e)}")
-            return "BUY"  # Mặc định trả về BUY
+            return   # Mặc định trả về BUY
 
     def _run(self):
         """Luồng chính quản lý bot với kiểm soát lỗi chặt chẽ"""
