@@ -573,6 +573,28 @@ class IndicatorBot:
         logger.info(f"[{self.symbol}] {message}")
         send_telegram(f"<b>{self.symbol}</b>: {message}")
 
+    def get_ema_crossover_signal(self, prices, short_period=9, long_period=21):
+        if len(prices) < long_period:
+            return None
+    
+        def ema(values, period):
+            k = 2 / (period + 1)
+            ema_val = values[0]
+            for price in values[1:]:
+                ema_val = price * k + ema_val * (1 - k)
+            return ema_val
+    
+        short_ema = ema(prices[-long_period:], short_period)
+        long_ema = ema(prices[-long_period:], long_period)
+    
+        if short_ema > long_ema:
+            return "BUY"
+        elif short_ema < long_ema:
+            return "SELL"
+        else:
+            return None
+
+
     def _handle_price_update(self, price):
         if self._stop: 
             return
@@ -600,7 +622,7 @@ class IndicatorBot:
             # Tạo nến từ dữ liệu
             candle1 = Candle.from_binance(data[0])
             candle2 = Candle.from_binance(data[1])
-            
+            ema_signal = self.get_ema_crossover_signal(prices)
             # Tính điểm cho BUY và SELL
             buy_score = 0
             sell_score = 0
@@ -610,16 +632,16 @@ class IndicatorBot:
                 rsi1 = self.rsi_history[-1]
                 rsi2 = self.rsi_history[-2]
                 
-                if rsi1 < 40 and rsi2 < rsi1:  # RSI tăng từ vùng quá bán
-                    buy_score += 2
-                elif rsi1 > 60 and rsi2 > rsi1:  # RSI giảm từ vùng quá mua
-                    sell_score += 2
+                if rsi2 < 70 and rsi2 < rsi1:  # RSI tăng từ vùng quá bán
+                    buy_score += 1
+                elif rsi2 > 30 and rsi2 > rsi1:  # RSI giảm từ vùng quá mua
+                    sell_score += 1
                     
             # 2. Phân tích nến
             if candle2.direction() == "BUY" and candle2.body_size() > candle1.body_size():
-                buy_score += 2
+                buy_score += 1
             elif candle2.direction() == "SELL" and candle2.body_size() > candle1.body_size():
-                sell_score += 2
+                sell_score += 1
                 
             # 3. Phân tích volume
             if candle2.volume > candle1.volume * 1.2:
@@ -638,6 +660,11 @@ class IndicatorBot:
             if candle2.close > candle1.close:
                 buy_score += 1
             elif candle2.close < candle1.close:
+                sell_score += 1
+
+            if ema_signal == "BUY":
+                buy_score += 1
+            elif ema_signal == "SELL":
                 sell_score += 1
                 
             # Quyết định dựa trên điểm số
