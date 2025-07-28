@@ -683,13 +683,11 @@ class IndicatorBot:
                 return None
                 
             # Kiểm tra điều kiện cơ bản
-            if last.direction() == "DOJI" or current.direction() == "DOJI":
+                
+            if current.body_size() <= last.body_size():
                 return None
                 
-            if last.body_size() <= candle2.body_size():
-                return None
-                
-            if last.volume <= candle2.volume:
+            if current.volume <= last.volume:
                 return None
                 
             # Tính điểm tín hiệu
@@ -728,9 +726,9 @@ class IndicatorBot:
                 sell_score += 1
                 
             # Quyết định
-            if buy_score >= 3 and buy_score > sell_score:
+            if buy_score > sell_score:
                 return "BUY"
-            elif sell_score >= 3 and sell_score > buy_score:
+            elif sell_score > buy_score:
                 return "SELL"
                 
             return None
