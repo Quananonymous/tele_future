@@ -622,7 +622,7 @@ class IndicatorBot:
             # Tạo nến từ dữ liệu
             candle1 = Candle.from_binance(data[0])
             candle2 = Candle.from_binance(data[1])
-            ema_signal = self.get_ema_crossover_signal(prices)
+            ema_signal = self.get_ema_crossover_signal(self.prices)
             # Tính điểm cho BUY và SELL
             buy_score = 0
             sell_score = 0
