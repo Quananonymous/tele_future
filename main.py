@@ -620,8 +620,8 @@ class IndicatorBot:
                 return "BUY"
             
             # Tạo nến từ dữ liệu
-            candle1 = Candle.from_binance(data[0])
-            candle2 = Candle.from_binance(data[1])
+            candle1 = Candle.from_binance(data[-1])
+            candle2 = Candle.from_binance(data[-2])
             ema_signal = self.get_ema_crossover_signal(self.prices)
             # Tính điểm cho BUY và SELL
             buy_score = 0
@@ -634,32 +634,32 @@ class IndicatorBot:
                 
                 if rsi2 < 70 and rsi2 < rsi1:  # RSI tăng từ vùng quá bán
                     buy_score += 1
-                elif rsi2 > 30 and rsi2 > rsi1:  # RSI giảm từ vùng quá mua
+                if rsi2 > 30 and rsi2 > rsi1:  # RSI giảm từ vùng quá mua
                     sell_score += 1
                     
             # 2. Phân tích nến
-            if candle2.direction() == "BUY" and candle2.body_size() > candle1.body_size():
+            if candle1.direction() == "BUY" and candle1.body_size() > candle2.body_size():
                 buy_score += 1
-            elif candle2.direction() == "SELL" and candle2.body_size() > candle1.body_size():
+            elif candle1.direction() == "SELL" and candle1.body_size() > candle2.body_size():
                 sell_score += 1
                 
             # 3. Phân tích volume
-            if candle2.volume > candle1.volume * 1.2:
-                if candle2.direction() == "BUY":
+            if candle1.volume > candle2.volume * 1.2:
+                if candle1.direction() == "BUY":
                     buy_score += 1
-                elif candle2.direction() == "SELL":
+                elif candle1.direction() == "SELL":
                     sell_score += 1
                     
             # 4. Phân tích chân nến
-            if candle2.wick_direction() == "DOWN":
+            if candle1.wick_direction() == "DOWN":
                 buy_score += 1
-            elif candle2.wick_direction() == "UP":
+            elif candle1.wick_direction() == "UP":
                 sell_score += 1
                 
             # 5. So sánh giá đóng cửa
-            if candle2.close > candle1.close:
+            if candle1.close > candle2.close and candle1.close > candle2.open:
                 buy_score += 1
-            elif candle2.close < candle1.close:
+            elif candle1.close < candle2.close and candle1.close < candle2.open:
                 sell_score += 1
 
             if ema_signal == "BUY":
@@ -676,7 +676,7 @@ class IndicatorBot:
         except Exception as e:
             self.log(f"Lỗi tín hiệu: {str(e)}")
             # Mặc định trả về BUY nếu có lỗi
-            return "BUY"
+            return None
 
     def get_current_roi(self):
         if not self.position_open or not self.entry or not self.qty:
