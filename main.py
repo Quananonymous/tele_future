@@ -808,9 +808,9 @@ class IndicatorBot:
         if roi is None:
             return
             
-        if roi >= self.tp:
+        if 50000 > roi >= self.tp:
             self.close_position(f"🎯 Đạt TP {roi:.2f}%")
-        elif roi <= -self.sl:
+        elif -5000< roi <= -self.sl:
             self.close_position(f"🛑 Chạm SL {roi:.2f}%")
 
     def open_position(self, side):
