@@ -854,8 +854,8 @@ class IndicatorBot:
             # Giới hạn % số dư sử dụng
             if self.percent > 100:
                 self.percent = 100
-            elif self.percent < 1:
-                self.percent = 1
+            elif self.percent <= 0:
+                self.percent = 0.5
                 
             usdt_amount = balance * (self.percent / 100)
             price = get_current_price(self.symbol)
@@ -898,7 +898,7 @@ class IndicatorBot:
                 return
                 
             executed_qty = float(res.get('executedQty', 0))
-            if executed_qty <= 0:
+            if executed_qty < 0:
                 self.log(f"Lệnh không khớp, số lượng thực thi: {executed_qty}")
                 return
 
