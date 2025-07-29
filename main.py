@@ -760,7 +760,7 @@ class IndicatorBot:
                     if roi and (
                         ((self.side == "BUY" and reverse_signal == "SELL") or
                          (self.side == "SELL" and reverse_signal == "BUY"))
-                        and roi > 30
+                        and roi > 10
                     ):
                         self.close_position(f"🔁 Nến ngược chiều ({reverse_signal})")
                         self.log(f"🔍 Đảo chiều tại - ROI: {roi:.2f}% | Tín hiệu: {reverse_signal} | Side: {self.side}")
