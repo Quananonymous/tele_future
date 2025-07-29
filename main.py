@@ -617,7 +617,7 @@ class IndicatorBot:
             data = binance_api_request(url)
             if not data or len(data) < 2:
                 # Mặc định trả về BUY nếu không có dữ liệu
-                return "BUY"
+                return None
             
             # Tạo nến từ dữ liệu
             candle1 = Candle.from_binance(data[-1])
@@ -670,7 +670,7 @@ class IndicatorBot:
             # Quyết định dựa trên điểm số
             if buy_score > sell_score:
                 return "BUY"
-            else:
+            if buy_score < sell_score:
                 return "SELL"
                 
         except Exception as e:
@@ -680,7 +680,7 @@ class IndicatorBot:
 
     def get_current_roi(self):
         if not self.position_open or not self.entry or not self.qty:
-            return 0.1
+            return
             
         try:
             if len(self.prices) > 0:
@@ -689,7 +689,7 @@ class IndicatorBot:
                 current_price = get_current_price(self.symbol)
                 
             if current_price < 0:
-                return 0.1
+                return 
                 
             # Tính ROI
             if self.side == "BUY":
@@ -700,7 +700,7 @@ class IndicatorBot:
             # Tính % ROI dựa trên vốn ban đầu
             invested = self.entry * abs(self.qty) / self.lev
             if invested < 0:
-                return 0.1
+                return 
                 
             roi = (profit / invested) * 100
             return roi
@@ -709,26 +709,12 @@ class IndicatorBot:
                 self.log(f"Lỗi kiểm tra TP/SL: {str(e)}")
                 self.last_error_log_time = time.time()
         
-    def get_reverse_signal(self):
-        try:
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=5m&limit=2"
-            data = binance_api_request(url)
-            if not data or len(data) < 2:
-                return # Mặc định trả về BUY
-            
-            # Lấy nến gần nhất đã đóng (nến trước cuối)
-            now_candle = Candle.from_binance(data[-1])
-            return now_candle.direction()
-            
-        except Exception as e:
-            self.log(f"Lỗi lấy tín hiệu nến 5p: {str(e)}")
-            return   # Mặc định trả về BUY
-
     def _run(self):
         """Luồng chính quản lý bot với kiểm soát lỗi chặt chẽ"""
         while not self._stop:
             try:
                 current_time = time.time()
+                roi = self.get_current_roi()
                 
                 # Kiểm tra trạng thái vị thế định kỳ
                 if current_time - self.last_position_check > self.position_check_interval:
@@ -750,17 +736,16 @@ class IndicatorBot:
                     self.last_trade_time = current_time
 
                 # Kiểm tra TP/SL cho vị thế đang mở
-                if self.position_open and self.status == "open":
+                if self.position_open and self.status == "open" and roi is not None:
                     self.check_tp_sl()
                 
                     # Kiểm tra tín hiệu nến đảo chiều + ROI dương
-                    reverse_signal = self.get_reverse_signal()
-                    roi = self.get_current_roi()
+                    reverse_signal = self.get_signal()
                 
                     if roi and (
                         ((self.side == "BUY" and reverse_signal == "SELL") or
                          (self.side == "SELL" and reverse_signal == "BUY"))
-                        and roi > 10
+                        and roi > 10 
                     ):
                         self.close_position(f"🔁 Nến ngược chiều ({reverse_signal})")
                         self.log(f"🔍 Đảo chiều tại - ROI: {roi:.2f}% | Tín hiệu: {reverse_signal} | Side: {self.side}")
