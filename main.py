@@ -883,7 +883,7 @@ class IndicatorBot:
                 return
                 
             executed_qty = float(res.get('executedQty', 0))
-            if executed_qty < 0:
+            if executed_qty <= 0:
                 self.log(f"Lệnh không khớp, số lượng thực thi: {executed_qty}")
                 return
 
