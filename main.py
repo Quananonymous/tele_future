@@ -116,11 +116,11 @@ def create_symbols_keyboard():
 
 def create_leverage_keyboard():
     """Tạo bàn phím chọn đòn bẩy"""
-    leverages = ["10", "20", "30", "50", "75", "100"]
+    leverages = ["3", "8", "10", "20", "30", "50", "75", "100"]
     keyboard = []
     row = []
     for lev in leverages:
-        row.append({"text": f"⚖️ {lev}x"})
+        row.append({"text": f" {lev}x"})
         if len(row) == 3:
             keyboard.append(row)
             row = []
@@ -135,31 +135,6 @@ def create_leverage_keyboard():
     }
 
 # ========== HÀM HỖ TRỢ API BINANCE VỚI XỬ LÝ LỖI CHI TIẾT ==========
-class RateLimiter:
-    def __init__(self, max_calls, period):
-        self.max_calls = max_calls
-        self.period = period
-        self.timestamps = []
-        self.lock = threading.Lock()
-
-    def wait(self):
-        with self.lock:
-            now = time.time()
-            # Xóa các timestamp cũ hơn period
-            self.timestamps = [t for t in self.timestamps if t > now - self.period]
-            
-            if len(self.timestamps) >= self.max_calls:
-                # Tính thời gian cần chờ
-                wait_time = self.period - (now - self.timestamps[0])
-                if wait_time > 0:
-                    time.sleep(wait_time)
-                    now = time.time()
-            
-            self.timestamps.append(now)
-
-# Tạo rate limiter global (5 requests/giây)
-API_RATE_LIMITER = RateLimiter(max_calls=5, period=1)
-
 def sign(query):
     try:
         return hmac.new(API_SECRET.encode(), query.encode(), hashlib.sha256).hexdigest()
@@ -173,9 +148,6 @@ def binance_api_request(url, method='GET', params=None, headers=None):
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            # Thêm rate limiting
-            API_RATE_LIMITER.wait()
-            
             if method.upper() == 'GET':
                 if params:
                     query = urllib.parse.urlencode(params)
@@ -191,17 +163,14 @@ def binance_api_request(url, method='GET', params=None, headers=None):
                 else:
                     logger.error(f"Lỗi API ({response.status}): {response.read().decode()}")
                     if response.status == 429:  # Rate limit
-                        # Tăng thời gian backoff
-                        sleep_time = min(10, 0.5 * (2 ** attempt))  # Exponential backoff with cap
-                        time.sleep(sleep_time)
+                        time.sleep(2 ** attempt)  # Exponential backoff
                     elif response.status >= 500:
                         time.sleep(1)
                     continue
         except urllib.error.HTTPError as e:
             logger.error(f"Lỗi HTTP ({e.code}): {e.reason}")
             if e.code == 429:  # Rate limit
-                sleep_time = min(10, 0.5 * (2 ** attempt))
-                time.sleep(sleep_time)
+                time.sleep(2 ** attempt)  # Exponential backoff
             elif e.code >= 500:
                 time.sleep(1)
             continue
@@ -350,7 +319,7 @@ def get_positions(symbol=None):
 def calc_rsi(prices, period=14):
     try:
         if len(prices) < period + 1:
-            return 50
+            return None
         
         deltas = np.diff(prices)
         gains = np.where(deltas > 0, deltas, 0)
@@ -366,13 +335,42 @@ def calc_rsi(prices, period=14):
         return 100.0 - (100.0 / (1 + rs))
     except Exception as e:
         logger.error(f"Lỗi tính RSI: {str(e)}")
-        return 50
+        return None
+
+def calc_ema(prices, period):
+    prices = np.array(prices)
+    if len(prices) < period:
+        return None
+    weights = np.exp(np.linspace(-1., 0., period))
+    weights /= weights.sum()
+    ema = np.convolve(prices, weights, mode='valid')
+    return ema
+
+def get_ema_crossover_signal(prices, fast_period=9, slow_period=21):
+    if len(prices) < slow_period + 2:
+        return None
+
+    fast_ema = calc_ema(prices, fast_period)
+    slow_ema = calc_ema(prices, slow_period)
+
+    if fast_ema is None or slow_ema is None:
+        return None
+
+    f1, f2 = fast_ema[-2], fast_ema[-1]
+    s1, s2 = slow_ema[-2], slow_ema[-1]
+
+    if f1 < s1 and f2 > s2:
+        return "BUY"
+    elif f1 > s1 and f2 < s2:
+        return "SELL"
+    return None
+
 
 # ========== QUẢN LÝ WEBSOCKET HIỆU QUẢ VỚI KIỂM SOÁT LỖI ==========
 class WebSocketManager:
     def __init__(self):
         self.connections = {}
-        self.executor = ThreadPoolExecutor(max_workers=5)  # Giảm worker để giảm tải
+        self.executor = ThreadPoolExecutor(max_workers=10)
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         
@@ -448,8 +446,6 @@ class WebSocketManager:
         for symbol in list(self.connections.keys()):
             self.remove_symbol(symbol)
             
-
-# === CLASS CANDLE (đặt ở đây) ===
 class Candle:
     def __init__(self, timestamp, open_price, high_price, low_price, close_price, volume):
         self.timestamp = int(timestamp)
@@ -531,7 +527,8 @@ class Candle:
     def __str__(self):
         return f"[{self.timestamp}] O:{self.open} H:{self.high} L:{self.low} C:{self.close} V:{self.volume}"
 
-# ========== BOT CHÍNH VỚI HỆ THỐNG TÍN HIỆU LUÔN TRẢ VỀ BUY/SELL ==========
+
+# ========== BOT CHÍNH VỚI ĐÓNG LỆNH CHÍNH XÁC ==========
 class IndicatorBot:
     def __init__(self, symbol, lev, percent, tp, sl, indicator, ws_manager):
         self.symbol = symbol.upper()
@@ -541,6 +538,7 @@ class IndicatorBot:
         self.sl = sl
         self.indicator = indicator
         self.ws_manager = ws_manager
+        self.check_position_status()
         self.status = "waiting"
         self.side = ""
         self.qty = 0
@@ -573,28 +571,6 @@ class IndicatorBot:
         logger.info(f"[{self.symbol}] {message}")
         send_telegram(f"<b>{self.symbol}</b>: {message}")
 
-    def get_ema_crossover_signal(self, prices, short_period=9, long_period=21):
-        if len(prices) < long_period:
-            return None
-    
-        def ema(values, period):
-            k = 2 / (period + 1)
-            ema_val = values[0]
-            for price in values[1:]:
-                ema_val = price * k + ema_val * (1 - k)
-            return ema_val
-    
-        short_ema = ema(prices[-long_period:], short_period)
-        long_ema = ema(prices[-long_period:], long_period)
-    
-        if short_ema > long_ema:
-            return "BUY"
-        elif short_ema < long_ema:
-            return "SELL"
-        else:
-            return None
-
-
     def _handle_price_update(self, price):
         if self._stop: 
             return
@@ -608,6 +584,141 @@ class IndicatorBot:
             self.rsi_history.append(rsi)
             if len(self.rsi_history) > 15:
                 self.rsi_history = self.rsi_history[-15:]
+
+
+    def _run(self):
+        """Luồng chính quản lý bot với kiểm soát lỗi chặt chẽ"""
+        while not self._stop:
+            try:
+                current_time = time.time()
+                
+                # Kiểm tra trạng thái vị thế định kỳ
+                if current_time - self.last_position_check > self.position_check_interval:
+                    self.check_position_status()
+                    self.last_position_check = current_time
+                
+                # Xử lý logic giao dịch
+                if not self.position_open and self.status == "waiting":
+                    # Kiểm tra thời gian chờ sau khi đóng lệnh
+                    if current_time - self.last_close_time < self.cooldown_period:
+                        time.sleep(1)
+                        continue
+                    
+                    signal = self.get_signal()
+                    
+            
+                    if signal:
+                        if (self.side == "BUY" and signal == "SELL") or (self.side == "SELL" and signal == "BUY"):
+                            # Tính ROI hiện tại
+                            current_price = self.prices[-1] if self.prices else get_current_price(self.symbol)
+                            if self.entry > 0 and current_price > 0:
+                                profit = (current_price - self.entry) * self.qty if self.side == "BUY" else (self.entry - current_price) * abs(self.qty)
+                                invested = self.entry * abs(self.qty) / self.lev
+                                roi = (profit / invested) * 100 if invested != 0 else 0
+                    
+                                if roi >= 30 or roi <= -500:
+                                    self.close_position(f"🔄 ROI {roi:.2f}% vượt ngưỡng, đảo chiều sang {signal}")
+
+                    if signal and current_time - self.last_trade_time > 60:
+                        self.open_position(signal)
+                        self.last_trade_time = current_time
+                # Kiểm tra TP/SL cho vị thế đang mở
+                if self.position_open and self.status == "open":
+                    self.check_tp_sl()
+                
+                time.sleep(1)
+                # Kiểm tra tín hiệu ngược chiều để đóng vị thế
+                
+            except Exception as e:
+                if time.time() - self.last_error_log_time > 10:
+                    self.log(f"Lỗi hệ thống: {str(e)}")
+                    self.last_error_log_time = time.time()
+                time.sleep(300)
+
+    def stop(self):
+        self._stop = True
+        self.ws_manager.remove_symbol(self.symbol)
+        try:
+            cancel_all_orders(self.symbol)
+        except Exception as e:
+            if time.time() - self.last_error_log_time > 10:
+                self.log(f"Lỗi hủy lệnh: {str(e)}")
+                self.last_error_log_time = time.time()
+        self.log(f"🔴 Bot dừng cho {self.symbol}")
+
+    def check_position_status(self):
+        """Kiểm tra trạng thái vị thế từ API Binance với kiểm soát lỗi"""
+        try:
+            positions = get_positions(self.symbol)
+            
+            if not positions or len(positions) == 0:
+                self.position_open = False
+                self.status = "waiting"
+                self.side = ""
+                self.qty = 0
+                self.entry = 0
+                return
+            
+            for pos in positions:
+                if pos['symbol'] == self.symbol:
+                    position_amt = float(pos.get('positionAmt', 0))
+                    
+                    if abs(position_amt) > 0:
+                        self.position_open = True
+                        self.status = "open"
+                        self.side = "BUY" if position_amt > 0 else "SELL"
+                        self.qty = position_amt
+                        self.entry = float(pos.get('entryPrice', 0))
+                        return
+            
+            self.position_open = False
+            self.status = "waiting"
+            self.side = ""
+            self.qty = 0
+            self.entry = 0
+            
+        except Exception as e:
+            if time.time() - self.last_error_log_time > 10:
+                self.log(f"Lỗi kiểm tra vị thế: {str(e)}")
+                self.last_error_log_time = time.time()
+
+    def check_tp_sl(self):
+        """Tự động kiểm tra và đóng lệnh khi đạt TP/SL với kiểm soát rủi ro"""
+        if not self.position_open or not self.entry or not self.qty:
+            return
+            
+        try:
+            if len(self.prices) > 0:
+                current_price = self.prices[-1]
+            else:
+                current_price = get_current_price(self.symbol)
+                
+            if current_price <= 0:
+                return
+                
+            # Tính ROI
+            if self.side == "BUY":
+                profit = (current_price - self.entry) * self.qty
+            else:
+                profit = (self.entry - current_price) * abs(self.qty)
+                
+            # Tính % ROI dựa trên vốn ban đầu
+            invested = self.entry * abs(self.qty) / self.lev
+            if invested <= 0:
+                return
+                
+            roi = (profit / invested) * 100
+            
+            # Kiểm tra TP/SL
+            if roi >= self.tp:
+                self.close_position(f"✅ Đạt TP {self.tp}% (ROI: {roi:.2f}%)")
+            elif self.sl is not None and roi <= -self.sl:
+                self.close_position(f"❌ Đạt SL {self.sl}% (ROI: {roi:.2f}%)")
+                
+        except Exception as e:
+            if time.time() - self.last_error_log_time > 10:
+                self.log(f"Lỗi kiểm tra TP/SL: {str(e)}")
+                self.last_error_log_time = time.time()
 
     def get_signal(self):
         """Luôn trả về BUY hoặc SELL dựa trên phân tích đơn giản"""
@@ -678,164 +789,11 @@ class IndicatorBot:
             # Mặc định trả về BUY nếu có lỗi
             return None
 
-    def get_current_roi(self):
-        if not self.position_open or not self.entry or not self.qty:
-            return 0.1
-            
-        try:
-            if len(self.prices) > 0:
-                current_price = self.prices[-1]
-            else:
-                current_price = get_current_price(self.symbol)
-                
-            if current_price < 0:
-                return 0.1
-                
-            # Tính ROI
-            if self.side == "BUY":
-                profit = (current_price - self.entry) * self.qty
-            else:
-                profit = (self.entry - current_price) * abs(self.qty)
-                
-            # Tính % ROI dựa trên vốn ban đầu
-            invested = self.entry * abs(self.qty) / self.lev
-            if invested < 0:
-                return 0.1
-                
-            roi = (profit / invested) * 100
-            return roi
-        except Exception as e:
-            if time.time() - self.last_error_log_time > 10:
-                self.log(f"Lỗi kiểm tra TP/SL: {str(e)}")
-                self.last_error_log_time = time.time()
-        
-    def get_reverse_signal(self):
-        try:
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=5m&limit=2"
-            data = binance_api_request(url)
-            if not data or len(data) < 2:
-                return # Mặc định trả về BUY
-            
-            # Lấy nến gần nhất đã đóng (nến trước cuối)
-            now_candle = Candle.from_binance(data[-1])
-            return now_candle.direction()
-            
-        except Exception as e:
-            self.log(f"Lỗi lấy tín hiệu nến 5p: {str(e)}")
-            return   # Mặc định trả về BUY
 
-    def _run(self):
-        """Luồng chính quản lý bot với kiểm soát lỗi chặt chẽ"""
-        while not self._stop:
-            try:
-                current_time = time.time()
-                
-                # Kiểm tra trạng thái vị thế định kỳ
-                if current_time - self.last_position_check > self.position_check_interval:
-                    self.check_position_status()
-                    self.last_position_check = current_time
-                
-                # Xử lý logic giao dịch
-                if not self.position_open and self.status == "waiting":
-                    # Kiểm tra thời gian chờ sau khi đóng lệnh
-                    if current_time - self.last_close_time < self.cooldown_period:
-                        time.sleep(1)
-                        continue
-                    
-                    # Luôn có tín hiệu BUY hoặc SELL
-                    signal = self.get_signal()
-                    
-                    # Vào lệnh ngay khi có tín hiệu
-                    self.open_position(signal)
-                    self.last_trade_time = current_time
-
-                # Kiểm tra TP/SL cho vị thế đang mở
-                if self.position_open and self.status == "open":
-                    self.check_tp_sl()
-                
-                    # Kiểm tra tín hiệu nến đảo chiều + ROI dương
-                    reverse_signal = self.get_signal()
-                    roi = self.get_current_roi()
-                
-                    if roi and (
-                        ((self.side == "BUY" and reverse_signal == "SELL") or
-                         (self.side == "SELL" and reverse_signal == "BUY"))
-                        and roi > 20
-                    ):
-                        self.close_position(f"🔁 Nến ngược chiều ({reverse_signal})")
-                        self.log(f"🔍 Đảo chiều tại - ROI: {roi:.2f}% | Tín hiệu: {reverse_signal} | Side: {self.side}")
-
-            except Exception as e:
-                if time.time() - self.last_error_log_time > 10:
-                    self.log(f"Lỗi hệ thống: {str(e)}")
-                    self.last_error_log_time = time.time()
-                time.sleep(1)
-
-    def stop(self):
-        self._stop = True
-        self.ws_manager.remove_symbol(self.symbol)
-        try:
-            cancel_all_orders(self.symbol)
-        except Exception as e:
-            if time.time() - self.last_error_log_time > 10:
-                self.log(f"Lỗi hủy lệnh: {str(e)}")
-                self.last_error_log_time = time.time()
-        self.log(f"🔴 Bot dừng cho {self.symbol}")
-
-    def check_position_status(self):
-        """Kiểm tra trạng thái vị thế từ API Binance với kiểm soát lỗi"""
-        try:
-            positions = get_positions(self.symbol)
-            
-            if not positions or len(positions) == 0:
-                self.position_open = False
-                self.status = "waiting"
-                self.side = ""
-                self.qty = 0
-                self.entry = 0
-                return
-            
-            for pos in positions:
-                if pos['symbol'] == self.symbol:
-                    position_amt = float(pos.get('positionAmt', 0))
-                    
-                    if abs(position_amt) > 0:
-                        self.position_open = True
-                        self.status = "open"
-                        self.side = "BUY" if position_amt > 0 else "SELL"
-                        self.qty = position_amt
-                        self.entry = float(pos.get('entryPrice', 0))
-                        return
-            
-            self.position_open = False
-            self.status = "waiting"
-            self.side = ""
-            self.qty = 0
-            self.entry = 0
-            
-        except Exception as e:
-            if time.time() - self.last_error_log_time > 10:
-                self.log(f"Lỗi kiểm tra vị thế: {str(e)}")
-                self.last_error_log_time = time.time()
-
-    def check_tp_sl(self):
-        roi = self.get_current_roi()
-        if roi is None:
-            return
-            
-        if 5000 > roi >= self.tp:
-            self.close_position(f"🎯 Đạt TP {roi:.2f}%")
-        elif -5000 <roi <= -self.sl:
-            self.close_position(f"🛑 Chạm SL {roi:.2f}%")
 
     def open_position(self, side):
         # Kiểm tra lại trạng thái trước khi vào lệnh
-        self.check_position_status()
-        
-        if self.position_open:
-            self.log(f"⚠️ Đã có vị thế mở, không vào lệnh mới")
-            return
-            
+        #self.check_position_status()    
         try:
             # Hủy lệnh tồn đọng
             cancel_all_orders(self.symbol)
@@ -854,8 +812,8 @@ class IndicatorBot:
             # Giới hạn % số dư sử dụng
             if self.percent > 100:
                 self.percent = 100
-            elif self.percent <= 0:
-                self.percent = 0.5
+            elif self.percent < 1:
+                self.percent = 1
                 
             usdt_amount = balance * (self.percent / 100)
             price = get_current_price(self.symbol)
@@ -917,7 +875,7 @@ class IndicatorBot:
                 f"🏷️ Giá vào: {self.entry:.4f}\n"
                 f"📊 Khối lượng: {executed_qty}\n"
                 f"💵 Giá trị: {executed_qty * self.entry:.2f} USDT\n"
-                f"⚖️ Đòn bẩy: {self.lev}x\n"
+                f" Đòn bẩy: {self.lev}x\n"
                 f"🎯 TP: {self.tp}% | 🛡️ SL: {self.sl}%"
             )
             self.log(message)
@@ -1011,6 +969,8 @@ class BotManager:
         send_telegram(welcome, chat_id, create_menu_keyboard())
 
     def add_bot(self, symbol, lev, percent, tp, sl, indicator):
+        if sl == 0:
+            sl = None
         symbol = symbol.upper()
         if symbol in self.bots:
             self.log(f"⚠️ Đã có bot cho {symbol}")
@@ -1031,8 +991,7 @@ class BotManager:
             # Kiểm tra vị thế hiện tại
             positions = get_positions(symbol)
             if positions and any(float(pos.get('positionAmt', 0)) != 0 for pos in positions):
-                self.log(f"⚠️ Đã có vị thế mở cho {symbol} trên Binance")
-                return False
+                self.log(f"⚠️ Có vị thế mở cho {symbol}")
             
             # Tạo bot mới
             bot = IndicatorBot(
@@ -1101,7 +1060,7 @@ class BotManager:
                             f"📌 Hướng: {bot.side}\n"
                             f"🏷️ Giá vào: {bot.entry:.4f}\n"
                             f"📊 Khối lượng: {abs(bot.qty)}\n"
-                            f"⚖️ Đòn bẩy: {bot.lev}x\n"
+                            f" Đòn bẩy: {bot.lev}x\n"
                             f"🎯 TP: {bot.tp}% | 🛡️ SL: {bot.sl}%"
                         )
                         send_telegram(status_msg)
@@ -1174,11 +1133,11 @@ class BotManager:
                 self.user_states[chat_id] = {}
                 send_telegram("❌ Đã hủy thêm bot", chat_id, create_menu_keyboard())
             elif 'x' in text:
-                leverage = int(text.replace('⚖️', '').replace('x', '').strip())
+                leverage = int(text.replace('', '').replace('x', '').strip())
                 user_state['leverage'] = leverage
                 user_state['step'] = 'waiting_percent'
                 send_telegram(
-                    f"📌 Cặp: {user_state['symbol']}\n⚖️ Đòn bẩy: {leverage}x\n\nNhập % số dư muốn sử dụng (1-100):",
+                    f"📌 Cặp: {user_state['symbol']}\n Đòn bẩy: {leverage}x\n\nNhập % số dư muốn sử dụng (1-100):",
                     chat_id,
                     create_cancel_keyboard()
                 )
@@ -1194,7 +1153,7 @@ class BotManager:
                         user_state['percent'] = percent
                         user_state['step'] = 'waiting_tp'
                         send_telegram(
-                            f"📌 Cặp: {user_state['symbol']}\n⚖️ ĐB: {user_state['leverage']}x\n📊 %: {percent}%\n\nNhập % Take Profit (ví dụ: 10):",
+                            f"📌 Cặp: {user_state['symbol']}\n ĐB: {user_state['leverage']}x\n📊 %: {percent}%\n\nNhập % Take Profit (ví dụ: 10):",
                             chat_id,
                             create_cancel_keyboard()
                         )
@@ -1214,7 +1173,7 @@ class BotManager:
                         user_state['tp'] = tp
                         user_state['step'] = 'waiting_sl'
                         send_telegram(
-                            f"📌 Cặp: {user_state['symbol']}\n⚖️ ĐB: {user_state['leverage']}x\n📊 %: {user_state['percent']}%\n🎯 TP: {tp}%\n\nNhập % Stop Loss (ví dụ: 5):",
+                            f"📌 Cặp: {user_state['symbol']}\n ĐB: {user_state['leverage']}x\n📊 %: {user_state['percent']}%\n🎯 TP: {tp}%\n\nNhập % Stop Loss (ví dụ: 5):",
                             chat_id,
                             create_cancel_keyboard()
                         )
@@ -1241,7 +1200,7 @@ class BotManager:
                             send_telegram(
                                 f"✅ <b>ĐÃ THÊM BOT THÀNH CÔNG</b>\n\n"
                                 f"📌 Cặp: {symbol}\n"
-                                f"⚖️ Đòn bẩy: {leverage}x\n"
+                                f" Đòn bẩy: {leverage}x\n"
                                 f"📊 % Số dư: {percent}%\n"
                                 f"🎯 TP: {tp}%\n"
                                 f"🛡️ SL: {sl}%",
