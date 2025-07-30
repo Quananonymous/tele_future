@@ -668,9 +668,9 @@ class IndicatorBot:
                 sell_score += 1
                 
             # Quyết định dựa trên điểm số
-            if buy_score > sell_score:
+            if buy_score > sell_score + 2:
                 return "BUY"
-            if buy_score < sell_score:
+            if buy_score + 2 < sell_score:
                 return "SELL"
                 
         except Exception as e:
@@ -745,7 +745,7 @@ class IndicatorBot:
                     if roi and (
                         ((self.side == "BUY" and reverse_signal == "SELL") or
                          (self.side == "SELL" and reverse_signal == "BUY"))
-                        and roi > 10 
+                        and roi > 20 
                     ):
                         self.close_position(f"🔁 Nến ngược chiều ({reverse_signal})")
                         self.log(f"🔍 Đảo chiều tại - ROI: {roi:.2f}% | Tín hiệu: {reverse_signal} | Side: {self.side}")
@@ -997,9 +997,11 @@ class BotManager:
 
     def add_bot(self, symbol, lev, percent, tp, sl, indicator):
         symbol = symbol.upper()
-        if symbol in self.bots:
-            self.log(f"⚠️ Đã có bot cho {symbol}")
-            return False
+        if tp == 0:
+            tp = None
+
+        if sl == 0:
+            sl = None
             
         # Kiểm tra API key
         if not API_KEY or not API_SECRET:
@@ -1016,8 +1018,7 @@ class BotManager:
             # Kiểm tra vị thế hiện tại
             positions = get_positions(symbol)
             if positions and any(float(pos.get('positionAmt', 0)) != 0 for pos in positions):
-                self.log(f"⚠️ Đã có vị thế mở cho {symbol} trên Binance")
-                return False
+                self.log(f"✅ Đã có vị thế mở cho {symbol} trên Binance")
             
             # Tạo bot mới
             bot = IndicatorBot(
@@ -1175,7 +1176,7 @@ class BotManager:
             else:
                 try:
                     percent = float(text)
-                    if 1 <= percent <= 100:
+                    if 0 < percent <= 100:
                         user_state['percent'] = percent
                         user_state['step'] = 'waiting_tp'
                         send_telegram(
@@ -1195,7 +1196,7 @@ class BotManager:
             else:
                 try:
                     tp = float(text)
-                    if tp > 0:
+                    if tp >= 0:
                         user_state['tp'] = tp
                         user_state['step'] = 'waiting_sl'
                         send_telegram(
