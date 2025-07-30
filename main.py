@@ -668,9 +668,9 @@ class IndicatorBot:
                 sell_score += 1
                 
             # Quyết định dựa trên điểm số
-            if buy_score > sell_score:
+            if buy_score > sell_score + 1:
                 return "BUY"
-            else:
+            if buy_score + 1 < sell_score:
                 return "SELL"
                 
         except Exception as e:
@@ -754,13 +754,13 @@ class IndicatorBot:
                     self.check_tp_sl()
                 
                     # Kiểm tra tín hiệu nến đảo chiều + ROI dương
-                    reverse_signal = self.get_reverse_signal()
+                    reverse_signal = self.get_signal()
                     roi = self.get_current_roi()
                 
                     if roi and (
                         ((self.side == "BUY" and reverse_signal == "SELL") or
                          (self.side == "SELL" and reverse_signal == "BUY"))
-                        and roi > 10
+                        and roi > 20
                     ):
                         self.close_position(f"🔁 Nến ngược chiều ({reverse_signal})")
                         self.log(f"🔍 Đảo chiều tại - ROI: {roi:.2f}% | Tín hiệu: {reverse_signal} | Side: {self.side}")
@@ -823,9 +823,9 @@ class IndicatorBot:
         if roi is None:
             return
             
-        if roi >= self.tp:
+        if 5000 > roi >= self.tp:
             self.close_position(f"🎯 Đạt TP {roi:.2f}%")
-        elif roi <= -self.sl:
+        elif -5000 <roi <= -self.sl:
             self.close_position(f"🛑 Chạm SL {roi:.2f}%")
 
     def open_position(self, side):
