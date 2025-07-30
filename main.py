@@ -12,6 +12,7 @@ import logging
 import requests
 import os
 import sys
+import re
 from concurrent.futures import ThreadPoolExecutor
 
 # Cấu hình logging
@@ -41,7 +42,7 @@ except Exception as e:
     BOT_CONFIGS = []
 
 # ========== HÀM TIỆN ÍCH ==========
-def send_telegram(message, chat_id=None):
+def send_telegram(message, chat_id=None, reply_markup=None):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
     
@@ -51,6 +52,9 @@ def send_telegram(message, chat_id=None):
         "text": message,
         "parse_mode": "HTML"
     }
+    
+    if reply_markup:
+        payload["reply_markup"] = json.dumps(reply_markup)
     
     try:
         requests.post(url, json=payload, timeout=3)
@@ -422,12 +426,14 @@ class HighFrequencyTrader:
         logger.info(f"Stopped HFT bot for {self.symbol}")
         send_telegram(f"🛑 <b>HFT BOT STOPPED</b>\nSymbol: {self.symbol}")
 
-# ========== QUẢN LÝ HỆ THỐNG ==========
+# ========== QUẢN LÝ HỆ THỐNG VÀ TELEGRAM ==========
 class BotManager:
     def __init__(self):
         self.data_manager = DataManager()
         self.ws_manager = WebSocketManager(self.data_manager)
         self.bots = {}
+        self.running = True
+        self.user_states = {}  # Trạng thái người dùng
         
         logger.info("HFT Trading System Initialized")
         send_telegram("🚀 <b>HFT TRADING SYSTEM STARTED</b>")
@@ -440,6 +446,10 @@ class BotManager:
         # Luồng giám sát
         self.monitor_thread = threading.Thread(target=self._monitor, daemon=True)
         self.monitor_thread.start()
+        
+        # Luồng xử lý Telegram
+        self.telegram_thread = threading.Thread(target=self._telegram_listener, daemon=True)
+        self.telegram_thread.start()
         
     def add_bot(self, symbol, leverage, risk_percent):
         symbol = symbol.upper()
@@ -455,12 +465,23 @@ class BotManager:
                 logger.error(f"Failed to add bot for {symbol}: {str(e)}")
         return False
 
+    def remove_bot(self, symbol):
+        symbol = symbol.upper()
+        if symbol in self.bots:
+            self.bots[symbol].stop()
+            del self.bots[symbol]
+            return True
+        return False
+
+    def get_active_bots(self):
+        return list(self.bots.keys())
+
     def _monitor(self):
         """Giám sát hệ thống định kỳ"""
-        while True:
+        while self.running:
             try:
                 # Báo cáo trạng thái mỗi 5 phút
-                active_bots = [s for s, b in self.bots.items()]
+                active_bots = self.get_active_bots()
                 status = f"📊 <b>SYSTEM STATUS</b>\nActive Bots: {len(active_bots)}\n"
                 status += "\n".join([f"• {s}" for s in active_bots]) if active_bots else "No active bots"
                 
@@ -469,12 +490,186 @@ class BotManager:
             except Exception:
                 time.sleep(60)
 
+    def _telegram_listener(self):
+        """Lắng nghe và xử lý lệnh từ Telegram"""
+        last_update_id = 0
+        
+        while self.running:
+            try:
+                # Lấy tin nhắn mới
+                url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates?offset={last_update_id+1}"
+                response = requests.get(url, timeout=30)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('ok') and data.get('result'):
+                        for update in data['result']:
+                            update_id = update['update_id']
+                            message = update.get('message', {})
+                            text = message.get('text', '').strip()
+                            chat_id = str(message.get('chat', {}).get('id'))
+                            
+                            # Chỉ xử lý tin nhắn từ admin
+                            if chat_id != TELEGRAM_CHAT_ID:
+                                continue
+                            
+                            # Cập nhật ID tin nhắn cuối
+                            if update_id > last_update_id:
+                                last_update_id = update_id
+                            
+                            # Xử lý lệnh
+                            self._handle_command(text)
+            except Exception as e:
+                logger.error(f"Telegram listener error: {str(e)}")
+                time.sleep(5)
+
+    def _handle_command(self, command):
+        """Xử lý lệnh từ Telegram"""
+        if not command:
+            return
+            
+        command = command.lower()
+        
+        # Lệnh trợ giúp
+        if command in ['/start', '/help']:
+            self._send_help()
+        
+        # Liệt kê bot đang chạy
+        elif command == '/list':
+            active_bots = self.get_active_bots()
+            if active_bots:
+                msg = "🤖 <b>ACTIVE BOTS</b>:\n" + "\n".join([f"• {bot}" for bot in active_bots])
+            else:
+                msg = "No active bots"
+            send_telegram(msg)
+        
+        # Thêm bot mới
+        elif command.startswith('/add'):
+            self._handle_add_command(command)
+        
+        # Xóa bot
+        elif command.startswith('/remove'):
+            self._handle_remove_command(command)
+        
+        # Dừng toàn bộ hệ thống
+        elif command == '/stopall':
+            self.stop_all()
+            send_telegram("🔴 <b>ALL BOTS STOPPED</b>")
+        
+        # Trạng thái hệ thống
+        elif command == '/status':
+            active_bots = self.get_active_bots()
+            msg = f"<b>SYSTEM STATUS</b>\nActive bots: {len(active_bots)}"
+            send_telegram(msg)
+        
+        # Hiển thị menu
+        elif command == '/menu':
+            self._show_menu()
+            
+        # Xử lý nút bấm từ menu
+        elif command in ['📋 list bots', '📋 list', 'list']:
+            active_bots = self.get_active_bots()
+            if active_bots:
+                msg = "🤖 <b>ACTIVE BOTS</b>:\n" + "\n".join([f"• {bot}" for bot in active_bots])
+            else:
+                msg = "No active bots"
+            send_telegram(msg)
+            
+        elif command in ['➕ add bot', '➕ add', 'add']:
+            send_telegram("🔍 Send bot config in format: /add SYMBOL LEVERAGE RISK_PERCENT\nExample: /add BTCUSDT 10 5")
+            
+        elif command in ['❌ remove bot', '❌ remove', 'remove']:
+            send_telegram("🔍 Send bot symbol to remove: /remove SYMBOL\nExample: /remove BTCUSDT")
+            
+        elif command in ['⛔ stop all', '⛔ stop', 'stop']:
+            self.stop_all()
+            
+        elif command in ['📊 status', 'status']:
+            active_bots = self.get_active_bots()
+            msg = f"📈 <b>SYSTEM STATUS</b>\nActive bots: {len(active_bots)}"
+            send_telegram(msg)
+            
+        elif command in ['💰 balance', 'balance']:
+            # Tạm thời chưa triển khai
+            send_telegram("⚠️ Balance feature is under development")
+            
+        # Lệnh không nhận dạng
+        else:
+            send_telegram("❌ Unrecognized command. Send /help for instructions")
+
+    def _send_help(self):
+        """Gửi hướng dẫn sử dụng"""
+        help_text = """
+🤖 <b>HFT BOT COMMANDS</b>:
+
+/start - Start interaction
+/help - Show this help
+/menu - Show control menu
+
+📊 <b>Bot Management</b>:
+/list - List active bots
+/add [symbol] [leverage] [risk%] - Add a new bot
+/remove [symbol] - Remove a bot
+/stopall - Stop all bots
+
+📈 <b>System Info</b>:
+/status - Show system status
+/balance - Show account balance
+"""
+        send_telegram(help_text)
+
+    def _show_menu(self):
+        """Hiển thị menu điều khiển"""
+        keyboard = {
+            "keyboard": [
+                [{"text": "📋 List Bots"}, {"text": "➕ Add Bot"}],
+                [{"text": "❌ Remove Bot"}, {"text": "⛔ Stop All"}],
+                [{"text": "📊 Status"}, {"text": "💰 Balance"}]
+            ],
+            "resize_keyboard": True,
+            "one_time_keyboard": True
+        }
+        send_telegram("📱 <b>CONTROL MENU</b>\nSelect an option:", reply_markup=keyboard)
+
+    def _handle_add_command(self, command):
+        """Xử lý lệnh thêm bot"""
+        parts = command.split()
+        if len(parts) < 4:
+            send_telegram("❌ Invalid format. Use: /add SYMBOL LEVERAGE RISK_PERCENT\nExample: /add BTCUSDT 10 5")
+            return
+            
+        try:
+            symbol = parts[1].upper()
+            leverage = int(parts[2])
+            risk_percent = float(parts[3])
+            
+            if self.add_bot(symbol, leverage, risk_percent):
+                send_telegram(f"✅ <b>BOT ADDED</b>\nSymbol: {symbol}\nLeverage: {leverage}x\nRisk: {risk_percent}%")
+            else:
+                send_telegram(f"❌ Failed to add bot for {symbol}")
+        except Exception as e:
+            send_telegram(f"❌ Error adding bot: {str(e)}")
+
+    def _handle_remove_command(self, command):
+        """Xử lý lệnh xóa bot"""
+        parts = command.split()
+        if len(parts) < 2:
+            send_telegram("❌ Invalid format. Use: /remove SYMBOL\nExample: /remove BTCUSDT")
+            return
+            
+        symbol = parts[1].upper()
+        if self.remove_bot(symbol):
+            send_telegram(f"✅ Bot removed for {symbol}")
+        else:
+            send_telegram(f"❌ No active bot for {symbol}")
+
     def stop_all(self):
         """Dừng toàn bộ hệ thống"""
         for symbol in list(self.bots.keys()):
             self.bots[symbol].stop()
             del self.bots[symbol]
         
+        self.running = False
         self.ws_manager.stop()
         logger.info("All bots stopped")
         send_telegram("🔴 <b>ALL BOTS STOPPED</b>")
