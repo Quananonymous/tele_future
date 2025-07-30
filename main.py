@@ -731,7 +731,7 @@ class IndicatorBot:
             data = binance_api_request(url)
             if not data or len(data) < 2:
                 # Mặc định trả về BUY nếu không có dữ liệu
-                return "BUY"
+                return
             
             # Tạo nến từ dữ liệu
             candle1 = Candle.from_binance(data[-1])
