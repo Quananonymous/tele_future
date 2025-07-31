@@ -619,7 +619,7 @@ class IndicatorBot:
                                 invested = self.entry * abs(self.qty) / self.lev
                                 roi = (profit / invested) * 100 if invested != 0 else 0
                     
-                                if roi >= 30 or roi <= -500:
+                                if roi >= 20 or roi <= -1000:
                                     self.close_position(f"🔄 ROI {roi:.2f}% vượt ngưỡng, đảo chiều sang {signal}")
 
                     if signal and current_time - self.last_trade_time > 60:
@@ -727,7 +727,7 @@ class IndicatorBot:
         """Luôn trả về BUY hoặc SELL dựa trên phân tích đơn giản"""
         try:
             # Lấy dữ liệu nến 3 phút (2 nến gần nhất)
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=3m&limit=2"
+            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=1m&limit=2"
             data = binance_api_request(url)
             if not data or len(data) < 2:
                 # Mặc định trả về BUY nếu không có dữ liệu
@@ -746,9 +746,9 @@ class IndicatorBot:
                 rsi1 = self.rsi_history[-1]
                 rsi2 = self.rsi_history[-2]
                 
-                if rsi2 < 70 and rsi2 < rsi1:  # RSI tăng từ vùng quá bán
+                if rsi2 < 10 and rsi2 < rsi1:  # RSI tăng từ vùng quá bán
                     buy_score += 1
-                if rsi2 > 30 and rsi2 > rsi1:  # RSI giảm từ vùng quá mua
+                if rsi2 > 90 and rsi2 > rsi1:  # RSI giảm từ vùng quá mua
                     sell_score += 1
                     
             # 2. Phân tích nến
@@ -782,9 +782,9 @@ class IndicatorBot:
                 sell_score += 1
                 
             # Quyết định dựa trên điểm số
-            if buy_score > sell_score + 1:
+            if buy_score >= 5:
                 return "BUY"
-            if buy_score + 1 < sell_score:
+            if sell_score >= 5:
                 return "SELL"
                 
         except Exception as e:
