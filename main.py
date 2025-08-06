@@ -727,15 +727,13 @@ class IndicatorBot:
         """Luôn trả về BUY hoặc SELL dựa trên phân tích đơn giản"""
         try:
             # Lấy dữ liệu nến 3 phút (2 nến gần nhất)
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=1m&limit=2"
+            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=1m&limit=5"
             data = binance_api_request(url)
-            if not data or len(data) < 2:
+            if not data or len(data) < 5:
                 # Mặc định trả về BUY nếu không có dữ liệu
                 return
             
             # Tạo nến từ dữ liệu
-            candle1 = Candle.from_binance(data[-1])
-            candle2 = Candle.from_binance(data[-2])
             ema_signal = self.get_ema_crossover_signal(self.prices)
             # Tính điểm cho BUY và SELL
             buy_score = 0
