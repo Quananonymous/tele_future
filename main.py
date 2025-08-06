@@ -742,15 +742,12 @@ class IndicatorBot:
             sell_score = 0
             
             # 1. Phân tích RSI
-            if len(self.rsi_history) >= 2:
-                rsi1 = self.rsi_history[-1]
-                rsi2 = self.rsi_history[-2]
-                
-                if rsi2 < 10 and rsi2 < rsi1:  # RSI tăng từ vùng quá bán
-                    buy_score += 1
-                if rsi2 > 90 and rsi2 > rsi1:  # RSI giảm từ vùng quá mua
-                    sell_score += 1
-                    
+            r1, r2, r3, r4, r5 = self.rsi_history[-5:]
+            if r1 < r2 < r3 < r4 < r5 and r5 > 80:
+                sell_score += 1
+            if r1 > r2 > r3 > r4 > r5 and r5 < 20:
+                buy_score += 1
+    
             # 2. Phân tích nến
             if candle1.direction() == "BUY" and candle1.body_size() > candle2.body_size():
                 buy_score += 1
