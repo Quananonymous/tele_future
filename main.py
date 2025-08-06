@@ -346,6 +346,24 @@ def calc_ema(prices, period):
     ema = np.convolve(prices, weights, mode='valid')
     return ema
 
+def get_ema_crossover_signal(prices, fast_period=9, slow_period=21):
+    if len(prices) < slow_period + 2:
+        return None
+
+    fast_ema = calc_ema(prices, fast_period)
+    slow_ema = calc_ema(prices, slow_period)
+
+    if fast_ema is None or slow_ema is None:
+        return None
+
+    f1, f2 = fast_ema[-2], fast_ema[-1]
+    s1, s2 = slow_ema[-2], slow_ema[-1]
+
+    if f1 < s1 and f2 > s2:
+        return "BUY"
+    elif f1 > s1 and f2 < s2:
+        return "SELL"
+    return None
 
 
 # ========== QUẢN LÝ WEBSOCKET HIỆU QUẢ VỚI KIỂM SOÁT LỖI ==========
@@ -553,27 +571,6 @@ class IndicatorBot:
         logger.info(f"[{self.symbol}] {message}")
         send_telegram(f"<b>{self.symbol}</b>: {message}")
 
-    def get_ema_crossover_signal(self, prices, short_period=9, long_period=21):
-        if len(prices) < long_period:
-            return None
-
-        def ema(values, period):
-            k = 2 / (period + 1)
-            ema_val = values[0]
-            for price in values[1:]:
-                ema_val = price * k + ema_val * (1 - k)
-            return ema_val
-
-        short_ema = ema(prices[-long_period:], short_period)
-        long_ema = ema(prices[-long_period:], long_period)
-
-        if short_ema > long_ema:
-            return "BUY"
-        elif short_ema < long_ema:
-            return "SELL"
-        else:
-            return None
-
     def _handle_price_update(self, price):
         if self._stop: 
             return
@@ -619,7 +616,7 @@ class IndicatorBot:
                                 invested = self.entry * abs(self.qty) / self.lev
                                 roi = (profit / invested) * 100 if invested != 0 else 0
                     
-                                if roi >= 20 or roi <= -1000:
+                                if roi >= 30 or roi <= -500:
                                     self.close_position(f"🔄 ROI {roi:.2f}% vượt ngưỡng, đảo chiều sang {signal}")
 
                     if signal and current_time - self.last_trade_time > 60:
@@ -727,27 +724,30 @@ class IndicatorBot:
         """Luôn trả về BUY hoặc SELL dựa trên phân tích đơn giản"""
         try:
             # Lấy dữ liệu nến 3 phút (2 nến gần nhất)
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=1m&limit=6"
+            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=1m&limit=2"
             data = binance_api_request(url)
-            if not data or len(data) < 6:
+            if not data or len(data) < 2:
                 # Mặc định trả về BUY nếu không có dữ liệu
-                return
+                return "BUY"
             
             # Tạo nến từ dữ liệu
+            candle1 = Candle.from_binance(data[-1])
+            candle2 = Candle.from_binance(data[-2])
             ema_signal = self.get_ema_crossover_signal(self.prices)
             # Tính điểm cho BUY và SELL
             buy_score = 0
             sell_score = 0
-            candle1 = Candle.from_binance(data[-1])
-            candle2 = Candle.from_binance(data[-2])
             
             # 1. Phân tích RSI
-            r1, r2, r3, r4, r5 = self.rsi_history[-5:]
-            if r1 < r2 < r3 < r4 < r5 and r5 > 80:
-                sell_score += 1
-            if r1 > r2 > r3 > r4 > r5 and r5 < 20:
-                buy_score += 1
-    
+            if len(self.rsi_history) >= 2:
+                rsi1 = self.rsi_history[-1]
+                rsi2 = self.rsi_history[-2]
+                
+                if rsi2 < 20 and rsi2 < rsi1:  # RSI tăng từ vùng quá bán
+                    buy_score += 1
+                if rsi2 > 80 and rsi2 > rsi1:  # RSI giảm từ vùng quá mua
+                    sell_score += 1
+                    
             # 2. Phân tích nến
             if candle1.direction() == "BUY" and candle1.body_size() > candle2.body_size():
                 buy_score += 1
@@ -779,9 +779,9 @@ class IndicatorBot:
                 sell_score += 1
                 
             # Quyết định dựa trên điểm số
-            if buy_score >= 5:
+            if buy_score > sell_score + 1:
                 return "BUY"
-            if sell_score >= 5:
+            if buy_score + 1 < sell_score:
                 return "SELL"
                 
         except Exception as e:
