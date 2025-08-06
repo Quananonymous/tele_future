@@ -727,9 +727,9 @@ class IndicatorBot:
         """Luôn trả về BUY hoặc SELL dựa trên phân tích đơn giản"""
         try:
             # Lấy dữ liệu nến 3 phút (2 nến gần nhất)
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=1m&limit=5"
+            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=1m&limit=6"
             data = binance_api_request(url)
-            if not data or len(data) < 5:
+            if not data or len(data) < 6:
                 # Mặc định trả về BUY nếu không có dữ liệu
                 return
             
@@ -738,6 +738,8 @@ class IndicatorBot:
             # Tính điểm cho BUY và SELL
             buy_score = 0
             sell_score = 0
+            candle1 = Candle.from_binance(data[-1])
+            candle2 = Candle.from_binance(data[-2])
             
             # 1. Phân tích RSI
             r1, r2, r3, r4, r5 = self.rsi_history[-5:]
