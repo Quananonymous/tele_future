@@ -782,9 +782,9 @@ class IndicatorBot:
                 sell_score += 1
                 
             # Quyết định dựa trên điểm số
-            if buy_score >= 5:
+            if buy_score >= 6:
                 return "BUY"
-            if sell_score >= 5:
+            if sell_score >= 6:
                 return "SELL"
                 
         except Exception as e:
