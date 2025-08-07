@@ -498,10 +498,11 @@ class Candle:
         """Xác định hướng chân nến: 'UP', 'DOWN', 'BALANCED'"""
         upper = self.upper_wick()
         lower = self.lower_wick()
+        body =  self.body_size()
 
-        if upper > lower * 1.5:
+        if upper > lower * 1.5 and upper >= 2*body:
             return "UP"
-        elif lower > upper * 1.5:
+        if lower > upper * 1.5 and lower >= 2*body:
             return "DOWN"
         else:
             return "BALANCED"
@@ -746,10 +747,10 @@ class IndicatorBot:
                 rsi1 = self.rsi_history[-1]
                 rsi2 = self.rsi_history[-2]
                 
-                if rsi2 < 10 and rsi2 < rsi1:  # RSI tăng từ vùng quá bán
-                    buy_score += 1
-                if rsi2 > 90 and rsi2 > rsi1:  # RSI giảm từ vùng quá mua
-                    sell_score += 1
+                if rsi2 < 10 and rsi2 > rsi1:  # RSI tăng từ vùng quá bán
+                    buy_score -= 1
+                if rsi2 > 90 and rsi2 < rsi1:  # RSI giảm từ vùng quá mua
+                    sell_score -= 1
                     
             # 2. Phân tích nến
             if candle1.direction() == "BUY" and candle1.body_size() > candle2.body_size():
@@ -782,9 +783,9 @@ class IndicatorBot:
                 sell_score += 1
                 
             # Quyết định dựa trên điểm số
-            if buy_score >= 6:
+            if buy_score >= 5:
                 return "BUY"
-            if sell_score >= 6:
+            if sell_score >= 5:
                 return "SELL"
                 
         except Exception as e:
