@@ -747,9 +747,9 @@ class IndicatorBot:
                 rsi1 = self.rsi_history[-1]
                 rsi2 = self.rsi_history[-2]
                 
-                if rsi2 < 10 and rsi2 > rsi1:  # RSI tăng từ vùng quá bán
+                if rsi2 < 20 and rsi2 > rsi1:  # RSI tăng từ vùng quá bán
                     buy_score -= 1
-                if rsi2 > 90 and rsi2 < rsi1:  # RSI giảm từ vùng quá mua
+                if rsi2 > 80 and rsi2 < rsi1:  # RSI giảm từ vùng quá mua
                     sell_score -= 1
                     
             # 2. Phân tích nến
