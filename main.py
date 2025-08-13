@@ -500,9 +500,9 @@ class Candle:
         lower = self.lower_wick()
         body =  self.body_size()
 
-        if upper > lower * 1.5 and upper >= 2*body:
+        if upper > lower * 2 and upper >= 1.2*body:
             return "UP"
-        if lower > upper * 1.5 and lower >= 2*body:
+        if lower > upper * 2 and lower >= 1.2*body:
             return "DOWN"
         else:
             return "BALANCED"
@@ -747,9 +747,9 @@ class IndicatorBot:
                 rsi1 = self.rsi_history[-1]
                 rsi2 = self.rsi_history[-2]
                 
-                if rsi2 < 25 and rsi2 > rsi1:  # RSI tăng từ vùng quá bán
+                if rsi2 < 20 and rsi2 > rsi1:  # RSI tăng từ vùng quá bán
                     buy_score -= 1
-                if rsi2 > 75 and rsi2 < rsi1:  # RSI giảm từ vùng quá mua
+                if rsi2 > 80 and rsi2 < rsi1:  # RSI giảm từ vùng quá mua
                     sell_score -= 1
                     
             # 2. Phân tích nến
@@ -759,22 +759,22 @@ class IndicatorBot:
                 sell_score += 1
                 
             # 3. Phân tích volume
-            if candle1.volume > candle2.volume * 1.2:
+            if candle1.volume > candle2.volume:
                 if candle1.direction() == "BUY":
                     buy_score += 1
                 elif candle1.direction() == "SELL":
                     sell_score += 1
                     
             # 4. Phân tích chân nến
-            if candle1.wick_direction() == "DOWN":
+            if candle1.wick_direction() == "DOWN" and candle2.wick_direction() == "DOWN":
                 buy_score += 1
-            elif candle1.wick_direction() == "UP":
+            elif candle1.wick_direction() == "UP" and candle2.wick_direction() == "UP":
                 sell_score += 1
                 
             # 5. So sánh giá đóng cửa
             if candle1.close > candle2.close and candle1.close > candle2.open:
                 buy_score += 1
-            elif candle1.close < candle2.close and candle1.close < candle2.open:
+            if candle1.close < candle2.close and candle1.close < candle2.open:
                 sell_score += 1
 
             if ema_signal == "BUY":
