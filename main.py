@@ -500,9 +500,9 @@ class Candle:
         lower = self.lower_wick()
         body =  self.body_size()
 
-        if upper > lower * 2 and upper >= 1.2*body:
+        if upper > lower and upper >= body:
             return "UP"
-        if lower > upper * 2 and lower >= 1.2*body:
+        if lower > upper and lower >= body:
             return "DOWN"
         else:
             return "BALANCED"
@@ -728,7 +728,7 @@ class IndicatorBot:
         """Luôn trả về BUY hoặc SELL dựa trên phân tích đơn giản"""
         try:
             # Lấy dữ liệu nến 3 phút (2 nến gần nhất)
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=15m&limit=2"
+            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=1m&limit=2"
             data = binance_api_request(url)
             if not data or len(data) < 2:
                 # Mặc định trả về BUY nếu không có dữ liệu
