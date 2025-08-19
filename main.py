@@ -766,10 +766,10 @@ class IndicatorBot:
                     sell_score += 1
                     
             # 4. Phân tích chân nến
-            if candle1.wick_direction() == "DOWN" and candle2.wick_direction() == "DOWN":
+            '''if candle1.wick_direction() == "DOWN" and candle2.wick_direction() == "DOWN":
                 buy_score += 1
             elif candle1.wick_direction() == "UP" and candle2.wick_direction() == "UP":
-                sell_score += 1
+                sell_score += 1'''
                 
             # 5. So sánh giá đóng cửa
             if candle1.close > candle2.close and candle1.close > candle2.open:
@@ -783,9 +783,9 @@ class IndicatorBot:
                 sell_score += 1
                 
             # Quyết định dựa trên điểm số
-            if buy_score >= 5:
+            if buy_score >= 4:
                 return "BUY"
-            if sell_score >= 5:
+            if sell_score >= 4:
                 return "SELL"
                 
         except Exception as e:
@@ -797,7 +797,7 @@ class IndicatorBot:
 
     def open_position(self, side):
         # Kiểm tra lại trạng thái trước khi vào lệnh
-        #self.check_position_status()    
+        self.check_position_status()    
         try:
             # Hủy lệnh tồn đọng
             cancel_all_orders(self.symbol)
