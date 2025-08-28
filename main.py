@@ -733,7 +733,9 @@ class IndicatorBot:
             data = self._fetch_klines(interval="1m", limit=60)
             if not data:
                 return None
-
+            if len(self.rsi_history) < 5 or len(self.prices) < 30:
+                return None
+    
             r1, r2, r3 = self.rsi_history[-3:]
             rsi_signal = None
             if r1 < r2 < r3 and r1 > 70:
