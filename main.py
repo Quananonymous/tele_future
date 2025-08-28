@@ -554,6 +554,21 @@ class IndicatorBot:
         logger.info(f"[{self.symbol}] {message}")
         send_telegram(f"<b>{self.symbol}</b>: {message}")
 
+    def _handle_price_update(self, price):
+        if self._stop: 
+            return
+            
+        self.prices.append(price)
+        # Giới hạn số lượng giá lưu trữ
+        if len(self.prices) > 100:
+            self.prices = self.prices[-100:]
+        rsi = calc_rsi(np.array(self.prices))
+        if rsi is not None:
+            self.rsi_history.append(rsi)
+            if len(self.rsi_history) > 15:
+                self.rsi_history = self.rsi_history[-15:]
+
+
         # ====== THÊM MỚI: tiện ích lấy klines nhanh ======
     def _fetch_klines(self, interval="1m", limit=50):
         url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval={interval}&limit={limit}"
@@ -719,6 +734,13 @@ class IndicatorBot:
             if not data:
                 return None
 
+            r1, r2, r3 = self.rsi_history[-3:]
+            rsi_signal = None
+            if r1 < r2 < r3 and r1 > 70:
+                rsi_signal = "NO_BUY"
+            if r1 > r2 > r3 and r3 < 30:
+                rsi_signal = "NO_SELL"
+
             # Tách trường từ klines
             opens  = [float(k[1]) for k in data]
             highs  = [float(k[2]) for k in data]
@@ -760,9 +782,9 @@ class IndicatorBot:
             if not decision_state:
                 return None
 
-            if decision_state in ("TANG_MANH", "TANG_NHE"):
+            if decision_state in ("TANG_MANH", "TANG_NHE") and rsi_signal != "NO_BUY":
                 return "BUY"
-            elif decision_state in ("GIAM_MANH", "GIAM_NHE"):
+            elif decision_state in ("GIAM_MANH", "GIAM_NHE") and rsi_signal != "NO_SELL":
                 return "SELL"
 
             return None
@@ -792,21 +814,6 @@ class IndicatorBot:
             return "SELL"
         else:
             return None
-
-    def _handle_price_update(self, price):
-        if self._stop: 
-            return
-            
-        self.prices.append(price)
-        # Giới hạn số lượng giá lưu trữ
-        if len(self.prices) > 100:
-            self.prices = self.prices[-100:]
-        rsi = calc_rsi(np.array(self.prices))
-        if rsi is not None:
-            self.rsi_history.append(rsi)
-            if len(self.rsi_history) > 15:
-                self.rsi_history = self.rsi_history[-15:]
-
 
     def _run(self):
         """Luồng chính quản lý bot với kiểm soát lỗi chặt chẽ"""
