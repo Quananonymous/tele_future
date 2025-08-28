@@ -554,6 +554,224 @@ class IndicatorBot:
         logger.info(f"[{self.symbol}] {message}")
         send_telegram(f"<b>{self.symbol}</b>: {message}")
 
+        # ====== THÊM MỚI: tiện ích lấy klines nhanh ======
+    def _fetch_klines(self, interval="1m", limit=50):
+        url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval={interval}&limit={limit}"
+        data = binance_api_request(url)
+        if not data or len(data) < 20:
+            return None
+        return data  # danh sách klines gốc của Binance
+
+    # ====== THÊM MỚI: EMA cuối cùng (nhanh & gọn) ======
+    def _ema_last(self, values, period):
+        if len(values) < period:
+            return None
+        k = 2 / (period + 1)
+        ema_val = float(values[0])
+        for x in values[1:]:
+            ema_val = float(x) * k + ema_val * (1 - k)
+        return ema_val
+
+    # ====== THÊM MỚI: ATR (dùng True Range) ======
+    def _atr(self, highs, lows, closes, period=14):
+        if len(closes) < period + 1:
+            return None
+        trs = []
+        for i in range(1, len(closes)):
+            h = float(highs[i]); l = float(lows[i]); pc = float(closes[i-1])
+            tr = max(h - l, abs(h - pc), abs(l - pc))
+            trs.append(tr)
+        if len(trs) < period:
+            return None
+        # SMA ATR thay vì EMA cho ổn định
+        return sum(trs[-period:]) / period
+
+    # ====== THÊM MỚI: phân loại 4 vùng cho 1 cây nến theo bối cảnh ======
+    def _classify_candle(self, idx, highs, lows, opens, closes, vols, ema_fast, ema_slow, atr, vol_sma):
+        """
+        Phân loại 4 vùng cho 1 chỉ mục nến (idx):
+        - Strong Up (TĂNG MẠNH)
+        - Weak Up (TĂNG NHẸ)
+        - Strong Down (GIẢM MẠNH)
+        - Weak Down (GIẢM NHẸ)
+        Logic dựa trên: hướng EMA, vị trí đóng nến, biên độ/ATR, tỉ lệ volume.
+        """
+        if idx <= 0 or idx >= len(closes):
+            return None
+
+        close_ = float(closes[idx])
+        open_  = float(opens[idx])
+        high_  = float(highs[idx])
+        low_   = float(lows[idx])
+        body   = abs(close_ - open_)
+        range_ = high_ - low_
+
+        trend_up = ema_fast is not None and ema_slow is not None and ema_fast > ema_slow
+        trend_dn = ema_fast is not None and ema_slow is not None and ema_fast < ema_slow
+
+        vol_ratio = 1.0
+        if vol_sma and vol_sma > 0:
+            vol_ratio = float(vols[idx]) / vol_sma
+
+        range_ratio = 1.0
+        if atr and atr > 0:
+            # Dùng TR hiện tại thay vì chỉ (high-low) để nhất quán
+            prev_close = float(closes[idx-1]) if idx-1 >= 0 else open_
+            tr_now = max(high_ - low_, abs(high_ - prev_close), abs(low_ - prev_close))
+            range_ratio = tr_now / atr
+
+        # Tiêu chí "mạnh": có xu hướng + close gần biên xu hướng + biên độ & volume cao
+        close_near_high = (high_ - close_) <= (range_ * 0.25)
+        close_near_low  = (close_ - low_)  <= (range_ * 0.25)
+
+        strong_up  = trend_up and close_ > open_ and close_near_high and (range_ratio >= 1.2) and (vol_ratio >= 1.3)
+        strong_dn  = trend_dn and close_ < open_ and close_near_low  and (range_ratio >= 1.2) and (vol_ratio >= 1.3)
+
+        weak_up = trend_up and close_ >= open_ and not strong_up
+        weak_dn = trend_dn and close_ <= open_ and not strong_dn
+
+        # Nếu chưa rơi vào đâu, đánh giá nhẹ theo hướng nến + EMA ngang
+        if strong_up:
+            return "TANG_MANH"
+        if strong_dn:
+            return "GIAM_MANH"
+        if weak_up:
+            return "TANG_NHE"
+        if weak_dn:
+            return "GIAM_NHE"
+
+        # Không rõ ràng: nếu body nhỏ, vol thấp → xem là "nhẹ" theo hướng EMA
+        if trend_up:
+            return "TANG_NHE"
+        if trend_dn:
+            return "GIAM_NHE"
+        # Bất định: gán "TĂNG_NHẸ" để không làm bot quá nhát
+        return "TANG_NHE"
+
+    # ====== THÊM MỚI: dò “tín hiệu chuyển vùng” để dự báo “SẼ” ======
+    def _predict_next_state(self, cur_idx, highs, lows, opens, closes, vols, ema_fast, ema_slow, vol_sma):
+        """
+        Dự đoán chuyển vùng ngắn hạn (SẼ như thế):
+        - Nếu đang 'TĂNG_NHẸ' mà phá đỉnh 10 nến gần nhất + vol bùng nổ -> 'TĂNG_MẠNH'
+        - Nếu đang 'GIẢM_NHẸ' mà phá đáy 10 nến gần nhất + vol bùng nổ -> 'GIẢM_MẠNH'
+        - Nếu đang 'TĂNG_MẠNH' nhưng vol tụt <0.8 * vol_sma và xuất hiện râu trên dài -> 'TĂNG_NHẸ'
+        - Nếu đang 'GIẢM_MẠNH' nhưng vol tụt <0.8 * vol_sma và xuất hiện râu dưới dài -> 'GIẢM_NHẸ'
+        - Mặc định: giữ nguyên vùng hiện tại
+        """
+        if cur_idx <= 10:
+            return None  # không đủ dữ liệu
+
+        # Tính vùng hiện tại bằng _classify_candle
+        atr = self._atr(highs[:cur_idx+1], lows[:cur_idx+1], closes[:cur_idx+1], period=14)
+        state_now = self._classify_candle(cur_idx, highs, lows, opens, closes, vols,
+                                          ema_fast, ema_slow, atr, vol_sma)
+
+        if not state_now:
+            return None
+
+        close_ = float(closes[cur_idx])
+        high_  = float(highs[cur_idx])
+        low_   = float(lows[cur_idx])
+        vol_   = float(vols[cur_idx])
+
+        lookback = 10
+        recent_high = max(float(h) for h in highs[cur_idx-lookback:cur_idx])
+        recent_low  = min(float(l) for l in lows[cur_idx-lookback:cur_idx])
+
+        vol_ratio = (vol_ / vol_sma) if (vol_sma and vol_sma > 0) else 1.0
+
+        upper_wick = high_ - max(float(opens[cur_idx]), close_)
+        lower_wick = min(float(opens[cur_idx]), close_) - low_
+        body = abs(float(closes[cur_idx]) - float(opens[cur_idx]))
+
+        # Quy tắc chuyển vùng:
+        if state_now == "TANG_NHE":
+            if close_ > recent_high and vol_ratio >= 1.5:
+                return "TANG_MANH"
+        if state_now == "GIAM_NHE":
+            if close_ < recent_low and vol_ratio >= 1.5:
+                return "GIAM_MANH"
+
+        if state_now == "TANG_MANH":
+            # đuối lực: vol tụt + râu trên >= thân
+            if vol_ratio <= 0.8 and upper_wick >= body:
+                return "TANG_NHE"
+
+        if state_now == "GIAM_MANH":
+            # đuối lực: vol tụt + râu dưới >= thân
+            if vol_ratio <= 0.8 and lower_wick >= body:
+                return "GIAM_NHE"
+
+        return state_now  # giữ nguyên nếu không có tín hiệu chuyển
+
+    # ====== THAY THẾ HOÀN TOÀN HÀM get_signal() ======
+    def get_signal(self):
+        """
+        Trả về BUY/SELL dựa trên:
+        - ĐÃ như thế: nến -2 (đã đóng)
+        - ĐANG như thế: nến -1 (đang hình thành)
+        - SẼ như thế: dự báo chuyển vùng -> ánh xạ BUY/SELL
+
+        Đồng thời, log 3 trạng thái để bạn quan sát trên Telegram.
+        """
+        try:
+            data = self._fetch_klines(interval="1m", limit=60)
+            if not data:
+                return None
+
+            # Tách trường từ klines
+            opens  = [float(k[1]) for k in data]
+            highs  = [float(k[2]) for k in data]
+            lows   = [float(k[3]) for k in data]
+            closes = [float(k[4]) for k in data]
+            vols   = [float(k[5]) for k in data]
+
+            # EMA nhanh/chậm cho bối cảnh xu hướng
+            ema_fast = self._ema_last(closes[-50:], 9)
+            ema_slow = self._ema_last(closes[-50:], 21)
+
+            # ATR và SMA volume để chuẩn hoá "mạnh/yếu"
+            atr = self._atr(highs, lows, closes, period=14)
+            vol_sma = sum(vols[-20:]) / 20.0 if len(vols) >= 20 else None
+
+            # Chỉ số nến:
+            idx_past = len(closes) - 2   # nến đã đóng (ĐÃ)
+            idx_now  = len(closes) - 1   # nến đang hình thành (ĐANG)
+
+            # Phân loại "ĐÃ" và "ĐANG"
+            state_past = self._classify_candle(idx_past, highs, lows, opens, closes, vols,
+                                               ema_fast, ema_slow, atr, vol_sma)
+            state_now  = self._classify_candle(idx_now,  highs, lows, opens, closes, vols,
+                                               ema_fast, ema_slow, atr, vol_sma)
+
+            # Dự báo "SẼ"
+            state_next = self._predict_next_state(idx_now, highs, lows, opens, closes, vols,
+                                                  ema_fast, ema_slow, vol_sma)
+
+            # Gửi log ngắn gọn (mỗi lần gọi get_signal trong _run)
+            try:
+                self.log(f"ĐÃ: {state_past} | ĐANG: {state_now} | SẼ: {state_next}")
+            except Exception:
+                pass
+
+            # Ánh xạ vùng → hành động
+            # Ưu tiên "SẼ", nếu None thì lấy "ĐANG". Nếu vẫn None, không vào lệnh.
+            decision_state = state_next or state_now
+            if not decision_state:
+                return None
+
+            if decision_state in ("TANG_MANH", "TANG_NHE"):
+                return "BUY"
+            elif decision_state in ("GIAM_MANH", "GIAM_NHE"):
+                return "SELL"
+
+            return None
+
+        except Exception as e:
+            self.log(f"Lỗi tín hiệu (new): {str(e)}")
+            return None
+
+
     def get_ema_crossover_signal(self, prices, short_period=9, long_period=21):
         if len(prices) < long_period:
             return None
@@ -723,77 +941,6 @@ class IndicatorBot:
             if time.time() - self.last_error_log_time > 10:
                 self.log(f"Lỗi kiểm tra TP/SL: {str(e)}")
                 self.last_error_log_time = time.time()
-
-    def get_signal(self):
-        """Luôn trả về BUY hoặc SELL dựa trên phân tích đơn giản"""
-        try:
-            # Lấy dữ liệu nến 3 phút (2 nến gần nhất)
-            url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval=1m&limit=2"
-            data = binance_api_request(url)
-            if not data or len(data) < 2:
-                # Mặc định trả về BUY nếu không có dữ liệu
-                return
-            
-            # Tạo nến từ dữ liệu
-            candle1 = Candle.from_binance(data[-1])
-            candle2 = Candle.from_binance(data[-2])
-            ema_signal = self.get_ema_crossover_signal(self.prices)
-            # Tính điểm cho BUY và SELL
-            buy_score = 0
-            sell_score = 0
-            
-            # 1. Phân tích RSI
-            if len(self.rsi_history) >= 2:
-                rsi1 = self.rsi_history[-1]
-                rsi2 = self.rsi_history[-2]
-                
-                if rsi2 < 20 and rsi2 > rsi1:  # RSI tăng từ vùng quá bán
-                    buy_score -= 1
-                if rsi2 > 80 and rsi2 < rsi1:  # RSI giảm từ vùng quá mua
-                    sell_score -= 1
-                    
-            # 2. Phân tích nến
-            if candle1.direction() == "BUY" and candle1.body_size() > candle2.body_size():
-                buy_score += 1
-            elif candle1.direction() == "SELL" and candle1.body_size() > candle2.body_size():
-                sell_score += 1
-                
-            # 3. Phân tích volume
-            if candle1.volume > candle2.volume:
-                if candle1.direction() == "BUY":
-                    buy_score += 1
-                elif candle1.direction() == "SELL":
-                    sell_score += 1
-                    
-            # 4. Phân tích chân nến
-            '''if candle1.wick_direction() == "DOWN" and candle2.wick_direction() == "DOWN":
-                buy_score += 1
-            elif candle1.wick_direction() == "UP" and candle2.wick_direction() == "UP":
-                sell_score += 1'''
-                
-            # 5. So sánh giá đóng cửa
-            if candle1.close > candle2.close and candle1.close > candle2.open:
-                buy_score += 1
-            if candle1.close < candle2.close and candle1.close < candle2.open:
-                sell_score += 1
-
-            if ema_signal == "BUY":
-                buy_score += 1
-            elif ema_signal == "SELL":
-                sell_score += 1
-                
-            # Quyết định dựa trên điểm số
-            if buy_score >= 4:
-                return "BUY"
-            if sell_score >= 4:
-                return "SELL"
-                
-        except Exception as e:
-            self.log(f"Lỗi tín hiệu: {str(e)}")
-            # Mặc định trả về BUY nếu có lỗi
-            return None
-
-
 
     def open_position(self, side):
         # Kiểm tra lại trạng thái trước khi vào lệnh
