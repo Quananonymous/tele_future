@@ -660,8 +660,8 @@ class IndicatorBot:
             return "TANG_NHE"
         if trend_dn:
             return "GIAM_NHE"
+        return None
         # Bất định: gán "TĂNG_NHẸ" để không làm bot quá nhát
-        return "TANG_NHE"
 
     # ====== THÊM MỚI: dò “tín hiệu chuyển vùng” để dự báo “SẼ” ======
     def _predict_next_state(self, cur_idx, highs, lows, opens, closes, vols, ema_fast, ema_slow, vol_sma):
