@@ -537,7 +537,7 @@ class IndicatorBot:
         self.last_position_check = 0
         self.last_error_log_time = 0
         self.last_close_time = 0
-        self.cooldown_period = 3000  # Thời gian chờ sau khi đóng lệnh
+        self.cooldown_period = 1800  # Thời gian chờ sau khi đóng lệnh
         self.max_position_attempts = 3  # Số lần thử tối đa
         self.position_attempt_count = 0
         
@@ -730,7 +730,7 @@ class IndicatorBot:
         Đồng thời, log 3 trạng thái để bạn quan sát trên Telegram.
         """
         try:
-            data = self._fetch_klines(interval="1m", limit=60)
+            data = self._fetch_klines(interval="1m", limit=30)
             if not data:
                 return None
             # Tách trường từ klines
@@ -741,8 +741,8 @@ class IndicatorBot:
             vols   = [float(k[5]) for k in data]
 
             # EMA nhanh/chậm cho bối cảnh xu hướng
-            ema_fast = self._ema_last(closes[-50:], 9)
-            ema_slow = self._ema_last(closes[-50:], 21)
+            ema_fast = self._ema_last(closes[-30:], 9)
+            ema_slow = self._ema_last(closes[-30:], 21)
 
             # ATR và SMA volume để chuẩn hoá "mạnh/yếu"
             atr = self._atr(highs, lows, closes, period=14)
