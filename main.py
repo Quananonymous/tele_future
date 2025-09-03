@@ -313,7 +313,7 @@ def get_positions(symbol=None):
     except Exception as e:
         logger.error(f"Lỗi lấy vị thế: {str(e)}")
         send_telegram(f"⚠️ <b>LỖI VỊ THẾ:</b> {symbol if symbol else ''} - {str(e)}")
-    return []
+    return None
 
 # ========== TÍNH CHỈ BÁO KỸ THUẬT VỚI KIỂM TRA DỮ LIỆU ==========
 def calc_rsi(prices, period=14):
