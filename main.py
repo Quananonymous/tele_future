@@ -302,7 +302,7 @@ def get_positions(symbol=None):
         
         positions = binance_api_request(url, headers=headers)
         if not positions:
-            return []
+            return None
             
         if symbol:
             for pos in positions:
