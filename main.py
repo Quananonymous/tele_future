@@ -302,7 +302,7 @@ def get_positions(symbol=None):
         
         positions = binance_api_request(url, headers=headers)
         if not positions:
-            return None
+            return []
             
         if symbol:
             for pos in positions:
@@ -313,7 +313,7 @@ def get_positions(symbol=None):
     except Exception as e:
         logger.error(f"Lỗi lấy vị thế: {str(e)}")
         send_telegram(f"⚠️ <b>LỖI VỊ THẾ:</b> {symbol if symbol else ''} - {str(e)}")
-    return None
+    return []
 
 # ========== TÍNH CHỈ BÁO KỸ THUẬT VỚI KIỂM TRA DỮ LIỆU ==========
 def calc_rsi(prices, period=14):
@@ -873,11 +873,11 @@ class IndicatorBot:
             positions = get_positions(self.symbol)
             
             if not positions or len(positions) == 0:
-                self.position_open = False
+                '''self.position_open = False
                 self.status = "waiting"
                 self.side = ""
                 self.qty = 0
-                self.entry = 0
+                self.entry = 0'''
                 return
             
             for pos in positions:
