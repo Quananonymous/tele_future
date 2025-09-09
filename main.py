@@ -757,7 +757,11 @@ class IndicatorBot:
             elif decision == "SELL" and ema_fast < ema_slow:
                 final_signal = "SELL"
 
-            self.log(f"States={states} | EMA={ema_fast:.2f}/{ema_slow:.2f} | RSI={rsi_values[-1]:.2f} | ATR={atr:.5f if atr else 0} | Quyết định={final_signal}")
+            atr_str = f"{atr:.5f}" if atr is not None else "0"
+            self.log(
+                f"States={states} | EMA={ema_fast:.2f}/{ema_slow:.2f} | RSI={rsi_values[-1]:.2f} | ATR={atr_str} | Quyết định={final_signal}"
+            )
+
             return final_signal
 
         except Exception as e:
