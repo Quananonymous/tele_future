@@ -763,11 +763,12 @@ class IndicatorBot:
                 ema_fast_str = f"{float(ema_fast):.2f}" if ema_fast is not None else "N/A"
                 ema_slow_str = f"{float(ema_slow):.2f}" if ema_slow is not None else "N/A"
                 rsi_last = float(rsi_values[-1]) if (rsi_values is not None and rsi_values[-1] is not None) else 50.0
-            
-                self.log(
-                    f"States={states} | EMA={ema_fast_str}/{ema_slow_str} | "
-                    f"RSI={rsi_last:.2f} | ATR={atr_str} | Quyết định={final_signal}"
-                )
+
+                if final_signal in ["BUY", "SELL"]:
+                    self.log(
+                        f"States={states} | EMA={ema_fast_str}/{ema_slow_str} | "
+                        f"RSI={rsi_last:.2f} | ATR={atr_str} | Quyết định={final_signal}"
+                    )
             except Exception as e:
                 logger.error(f"Log formatting error: {e}")
 
