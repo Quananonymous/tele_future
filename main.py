@@ -537,7 +537,7 @@ class IndicatorBot:
         self.last_position_check = 0
         self.last_error_log_time = 0
         self.last_close_time = 0
-        self.cooldown_period = 1800  # Thời gian chờ sau khi đóng lệnh
+        self.cooldown_period = 60  # Thời gian chờ sau khi đóng lệnh
         self.max_position_attempts = 3  # Số lần thử tối đa
         self.position_attempt_count = 0
         
