@@ -344,7 +344,8 @@ def calc_ema(prices, period):
     weights = np.exp(np.linspace(-1., 0., period))
     weights /= weights.sum()
     ema = np.convolve(prices, weights, mode='valid')
-    return ema
+    return float(ema[-1])  # lấy giá trị EMA cuối cùng dạng float
+
 
 
 
@@ -780,17 +781,17 @@ class IndicatorBot:
     def get_ema_crossover_signal(self, prices, short_period=9, long_period=21):
         if len(prices) < long_period:
             return None
-
+    
         def ema(values, period):
             k = 2 / (period + 1)
-            ema_val = values[0]
+            ema_val = float(values[0])
             for price in values[1:]:
-                ema_val = price * k + ema_val * (1 - k)
-            return ema_val
-
+                ema_val = float(price) * k + ema_val * (1 - k)
+            return float(ema_val)
+    
         short_ema = ema(prices[-long_period:], short_period)
         long_ema = ema(prices[-long_period:], long_period)
-
+    
         if short_ema > long_ema:
             return "BUY"
         elif short_ema < long_ema:
