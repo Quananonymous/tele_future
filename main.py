@@ -632,24 +632,24 @@ class IndicatorBot:
         strength = "NORMAL"
         if atr:
             candle_range = h - l
-            if candle_range >= 1.2 * atr:
+            if candle_range >= 1.3 * atr:
                 strength = "STRONG"
-            elif candle_range < 0.8 * atr:
+            elif candle_range < 0.7 * atr:
                 strength = "WEAK"
 
         trend = "UP" if ema_fast > ema_slow else "DOWN"
 
         if c > o:  # nến xanh
-            if rsi > 80:
+            if rsi > 95:
                 return f"BULL_OVERBOUGHT_{strength}_{trend}"
-            elif rsi > 60:
+            elif rsi > 70:
                 return f"BULL_STRONG_{strength}_{trend}"
             else:
                 return f"BULL_WEAK_{strength}_{trend}"
         elif c < o:  # nến đỏ
-            if rsi < 20:
+            if rsi < 5:
                 return f"BEAR_OVERSOLD_{strength}_{trend}"
-            elif rsi < 40:
+            elif rsi < 30:
                 return f"BEAR_STRONG_{strength}_{trend}"
             else:
                 return f"BEAR_WEAK_{strength}_{trend}"
