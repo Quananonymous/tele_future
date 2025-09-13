@@ -622,102 +622,79 @@ class IndicatorBot:
             trs.append(tr)
         if len(trs) < period:
             return None
-        # SMA ATR thay vì EMA cho ổn định
-        return sum(trs[-period:]) / period
+        return sum(trs[-period:]) / period  # SMA ATR
 
-    # ====== Phân loại nến với ATR + EMA + RSI ======
+    # ====== PHÂN LOẠI NẾN: chỉ còn TĂNG / GIẢM / MẠNH / YẾU / QUÁ ======
     def _candle_full(self, o, h, l, c, rsi, atr, ema_fast, ema_slow):
         body = abs(c - o)
-        wick = (h - l) - body
-        strength = "NORMAL"
-        if atr:
-            candle_range = h - l
-            if candle_range >= 1.3 * atr:
-                strength = "STRONG"
-            elif candle_range < 0.7 * atr:
-                strength = "WEAK"
+        candle_range = h - l
+        signal = "NEUTRAL"
 
-        trend = "UP" if ema_fast > ema_slow else "DOWN"
-
-        if c > o:  # nến xanh
-            if rsi > 80:
-                return f"BULL_OVERBOUGHT_{strength}_{trend}"
+        # Xác định nến xanh / đỏ
+        if c > o:  # Nến tăng
+            if rsi > 85:
+                signal = "UP_OVERBOUGHT"
             elif rsi > 65:
-                return f"BULL_STRONG_{strength}_{trend}"
+                signal = "UP_STRONG"
             else:
-                return f"BULL_WEAK_{strength}_{trend}"
-        elif c < o:  # nến đỏ
-            if rsi < 20:
-                return f"BEAR_OVERSOLD_{strength}_{trend}"
+                signal = "UP_WEAK"
+        elif c < o:  # Nến giảm
+            if rsi < 15:
+                signal = "DOWN_OVERSOLD"
             elif rsi < 35:
-                return f"BEAR_STRONG_{strength}_{trend}"
+                signal = "DOWN_STRONG"
             else:
-                return f"BEAR_WEAK_{strength}_{trend}"
-        else:
-            return f"DOJI_{strength}_{trend}"
+                signal = "DOWN_WEAK"
 
+        # Điều chỉnh mạnh/yếu bằng ATR + thân nến
+        if atr:
+            if candle_range >= 1.4 * atr and "WEAK" in signal:
+                signal = signal.replace("WEAK", "STRONG")
+            if body >= 0.6 * atr and "WEAK" in signal:
+                signal = signal.replace("WEAK", "STRONG")
 
-    # ====== Đệ quy phân tích nến ======
+        # Lọc EMA trend: chỉ giữ tín hiệu thuận xu hướng
+        if ema_fast and ema_slow:
+            if "UP" in signal and ema_fast < ema_slow:
+                signal = "NEUTRAL"  # bỏ BUY khi trend đang DOWN
+            if "DOWN" in signal and ema_fast > ema_slow:
+                signal = "NEUTRAL"  # bỏ SELL khi trend đang UP
+
+        return signal
+
+    # ====== LOGIC ĐỆ QUY (gọn) ======
     def _recursive_logic(self, states, idx=2):
-        """
-        Đệ quy phân tích dựa trên bộ 3 nến (n-2, n-1, n).
-        states = list trạng thái của 5 nến cuối [-5, -4, -3, -2, -1]
-        """
         if idx >= len(states):
-            return None  # hết chuỗi
+            return None
 
         prev2, prev1, curr = states[idx-2], states[idx-1], states[idx]
         decision = None
 
-        # ===== Rule BUY =====
-        # 1. Hai nến trước đều BULL mạnh, nến hiện tại vẫn BULL -> BUY
-        if prev2.startswith("BULL_STRONG") and prev1.startswith("BULL_STRONG") and curr.startswith("BULL"):
+        # BUY rules
+        if prev2 == "UP_STRONG" and prev1 == "UP_STRONG" and curr.startswith("UP"):
+            decision = "BUY"
+        elif prev1 == "DOWN_OVERSOLD" or curr == "DOWN_OVERSOLD":
+            decision = "BUY"
+        elif prev1.startswith("DOWN") and curr == "UP_STRONG":
             decision = "BUY"
 
-        # 2. Hai nến trước BULL yếu nhưng vẫn giữ, nến hiện tại thành BULL STRONG -> BUY
-        elif prev2.startswith("BULL_WEAK") and prev1.startswith("BULL_WEAK") and curr.startswith("BULL_STRONG"):
-            decision = "BUY"
-
-        # 3. Chuỗi BEAR oversold -> BUY vì dễ hồi
-        elif "BEAR_OVERSOLD" in prev1 or "BEAR_OVERSOLD" in curr:
-            decision = "BUY"
-
-        # 4. BEAR → BULL STRONG đảo chiều rõ ràng -> BUY
-        elif prev1.startswith("BEAR") and curr.startswith("BULL_STRONG"):
-            decision = "BUY"
-
-
-        # ===== Rule SELL =====
-        # 5. Hai nến trước đều BEAR mạnh, nến hiện tại vẫn BEAR -> SELL
-        elif prev2.startswith("BEAR_STRONG") and prev1.startswith("BEAR_STRONG") and curr.startswith("BEAR"):
+        # SELL rules
+        elif prev2 == "DOWN_STRONG" and prev1 == "DOWN_STRONG" and curr.startswith("DOWN"):
+            decision = "SELL"
+        elif prev1 == "UP_OVERBOUGHT" or curr == "UP_OVERBOUGHT":
+            decision = "SELL"
+        elif prev1.startswith("UP") and curr == "DOWN_STRONG":
             decision = "SELL"
 
-        # 6. Hai nến trước BEAR yếu nhưng hiện tại BEAR STRONG -> SELL
-        elif prev2.startswith("BEAR_WEAK") and prev1.startswith("BEAR_WEAK") and curr.startswith("BEAR_STRONG"):
-            decision = "SELL"
-
-        # 7. Chuỗi BULL overbought -> SELL vì dễ đảo chiều
-        elif "BULL_OVERBOUGHT" in prev1 or "BULL_OVERBOUGHT" in curr:
-            decision = "SELL"
-
-        # 8. BULL → BEAR STRONG đảo chiều rõ ràng -> SELL
-        elif prev1.startswith("BULL") and curr.startswith("BEAR_STRONG"):
-            decision = "SELL"
-
-
-        # ===== Rule Sideway / Giữ nguyên =====
-        # 9. Nếu toàn chuỗi là WEAK / DOJI -> bỏ qua, không giao dịch
-        elif ("WEAK" in prev2 and "WEAK" in prev1 and "WEAK" in curr) or \
-             ("DOJI" in prev1 and "DOJI" in curr):
+        # SIDEWAY
+        elif prev1 == "NEUTRAL" and curr == "NEUTRAL":
             decision = None
 
-        # 10. Nếu không khớp rule nào, giữ lại quyết định trước đó
-        # (ưu tiên quyết định mới nhất nếu có)
+        # Đệ quy tiếp
         next_decision = self._recursive_logic(states, idx + 1)
         return next_decision if next_decision else decision
 
-
-    # ====== get_signal() mới ======
+    # ====== GET SIGNAL ======
     def get_signal(self):
         try:
             data = self._fetch_klines(interval="1m", limit=50)
@@ -729,12 +706,9 @@ class IndicatorBot:
             lows   = [float(k[3]) for k in data]
             closes = [float(k[4]) for k in data]
 
-            # ATR, EMA
             atr = self._atr(highs, lows, closes, period=14)
             ema_fast = self._ema_last(closes, 9)
             ema_slow = self._ema_last(closes, 21)
-
-            # RSI
             rsi_values = self._calc_rsi_series(closes, period=14)
 
             # Lấy 5 nến cuối
@@ -748,32 +722,25 @@ class IndicatorBot:
                 )
                 states.append(state)
 
-            # Đệ quy phân tích 5 nến cuối → kết quả cho -3, -2, -1
+            # Đệ quy phân tích
             decision = self._recursive_logic(states)
 
-            # EMA trend filter lần cuối
-            final_signal = None
-            if decision == "BUY" and ema_fast > ema_slow:
-                final_signal = "BUY"
-            elif decision == "SELL" and ema_fast < ema_slow:
-                final_signal = "SELL"
-
+            # Log
             try:
                 atr_str = f"{float(atr):.5f}" if atr is not None else "0"
                 ema_fast_str = f"{float(ema_fast):.2f}" if ema_fast is not None else "N/A"
                 ema_slow_str = f"{float(ema_slow):.2f}" if ema_slow is not None else "N/A"
                 rsi_last = float(rsi_values[-1]) if (rsi_values is not None and rsi_values[-1] is not None) else 50.0
 
-                if final_signal in ["BUY", "SELL"]:
+                if decision in ["BUY", "SELL"]:
                     self.log(
                         f"States={states} | EMA={ema_fast_str}/{ema_slow_str} | "
-                        f"RSI={rsi_last:.2f} | ATR={atr_str} | Quyết định={final_signal}"
+                        f"RSI={rsi_last:.2f} | ATR={atr_str} | Quyết định={decision}"
                     )
             except Exception as e:
                 logger.error(f"Log formatting error: {e}")
 
-
-            return final_signal
+            return decision
 
         except Exception as e:
             self.log(f"Lỗi tín hiệu (RSI/EMA/ATR recursive): {str(e)}")
