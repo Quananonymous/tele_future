@@ -640,16 +640,16 @@ class IndicatorBot:
         trend = "UP" if ema_fast > ema_slow else "DOWN"
 
         if c > o:  # nến xanh
-            if rsi > 90:
+            if rsi > 80:
                 return f"BULL_OVERBOUGHT_{strength}_{trend}"
-            elif rsi > 70:
+            elif rsi > 65:
                 return f"BULL_STRONG_{strength}_{trend}"
             else:
                 return f"BULL_WEAK_{strength}_{trend}"
         elif c < o:  # nến đỏ
-            if rsi < 10:
+            if rsi < 20:
                 return f"BEAR_OVERSOLD_{strength}_{trend}"
-            elif rsi < 30:
+            elif rsi < 35:
                 return f"BEAR_STRONG_{strength}_{trend}"
             else:
                 return f"BEAR_WEAK_{strength}_{trend}"
