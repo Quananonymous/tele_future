@@ -538,7 +538,7 @@ class IndicatorBot:
         self.last_position_check = 0
         self.last_error_log_time = 0
         self.last_close_time = 0
-        self.cooldown_period = 2040  # Thời gian chờ sau khi đóng lệnh
+        self.cooldown_period = 9000  # Thời gian chờ sau khi đóng lệnh
         self.max_position_attempts = 3  # Số lần thử tối đa
         self.position_attempt_count = 0
         
@@ -571,7 +571,7 @@ class IndicatorBot:
 
 
         # ====== THÊM MỚI: tiện ích lấy klines nhanh ======
-    def _fetch_klines(self, interval="1m", limit=50):
+    def _fetch_klines(self, interval="5m", limit=50):
         url = f"https://fapi.binance.com/fapi/v1/klines?symbol={self.symbol}&interval={interval}&limit={limit}"
         data = binance_api_request(url)
         if not data or len(data) < 20:
