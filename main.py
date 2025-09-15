@@ -785,29 +785,27 @@ class IndicatorBot:
                     if current_time - self.last_close_time < self.cooldown_period:
                         time.sleep(1)
                         continue
-                    
-                signal = self.get_signal()
-                    
-            
-                if signal:
-                    if (self.side == "BUY" and signal == "SELL") or (self.side == "SELL" and signal == "BUY"):
-                        # Tính ROI hiện tại
-                        current_price = self.prices[-1] if self.prices else get_current_price(self.symbol)
-                        if self.entry > 0 and current_price > 0:
-                            profit = (current_price - self.entry) * self.qty if self.side == "BUY" else (self.entry - current_price) * abs(self.qty)
-                            invested = self.entry * abs(self.qty) / self.lev
-                            roi = (profit / invested) * 100 if invested != 0 else 0
-                
-                            if roi >= 20:
-                                self.close_position(f"🔄 ROI {roi:.2f}% vượt ngưỡng, đảo chiều sang {signal}")
 
-                if signal and current_time - self.last_trade_time > 60:
-                    self.open_position(signal)
-                    self.last_trade_time = current_time
+                    if signal and current_time - self.last_trade_time > 60:
+                        self.open_position(signal)
+                        self.last_trade_time = current_time
                 # Kiểm tra TP/SL cho vị thế đang mở
                 if self.position_open and self.status == "open":
                     self.check_tp_sl()
-                
+                    signal = self.get_signal()
+                    
+                    if signal:
+                        if (self.side == "BUY" and signal == "SELL") or (self.side == "SELL" and signal == "BUY"):
+                            # Tính ROI hiện tại
+                            current_price = self.prices[-1] if self.prices else get_current_price(self.symbol)
+                            if self.entry > 0 and current_price > 0:
+                                profit = (current_price - self.entry) * self.qty if self.side == "BUY" else (self.entry - current_price) * abs(self.qty)
+                                invested = self.entry * abs(self.qty) / self.lev
+                                roi = (profit / invested) * 100 if invested != 0 else 0
+                    
+                                if roi >= 20:
+                                    self.close_position(f"🔄 ROI {roi:.2f}% vượt ngưỡng, đảo chiều sang {signal}")
+                    
                 time.sleep(1)
                 # Kiểm tra tín hiệu ngược chiều để đóng vị thế
                 
