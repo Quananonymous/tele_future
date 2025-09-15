@@ -726,7 +726,7 @@ class IndicatorBot:
             decision = self._recursive_logic(states)
 
             # Log
-            try:
+            '''try:
                 atr_str = f"{float(atr):.5f}" if atr is not None else "0"
                 ema_fast_str = f"{float(ema_fast):.2f}" if ema_fast is not None else "N/A"
                 ema_slow_str = f"{float(ema_slow):.2f}" if ema_slow is not None else "N/A"
@@ -738,7 +738,7 @@ class IndicatorBot:
                         f"RSI={rsi_last:.2f} | ATR={atr_str} | Quyết định={decision}"
                     )
             except Exception as e:
-                logger.error(f"Log formatting error: {e}")
+                logger.error(f"Log formatting error: {e}")'''
 
             return decision
 
@@ -789,6 +789,7 @@ class IndicatorBot:
 
                     if signal and current_time - self.last_trade_time > 60:
                         self.open_position(signal)
+                        self.log(f"🚀 Thực thi lệnh mới: {signal}")
                         self.last_trade_time = current_time
                 # Kiểm tra TP/SL cho vị thế đang mở
                 if self.position_open and self.status == "open":
